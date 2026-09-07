@@ -1,0 +1,74 @@
+﻿
+> build
+> vite build
+
+[36mvite v7.3.6 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mÔ£ô[39m 1767 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mpublic/build/[22m[32mmanifest.json                                      [39m[1m[2m   17.19 kB[22m[1m[22m[2m Ôöé gzip:   1.87 kB[22m
+[2mpublic/build/[22m[32massets/isologo-suns-power-mx-B5KMyNyP.png          [39m[1m[2m   28.18 kB[22m[1m[22m
+[2mpublic/build/[22m[35massets/AbonoDialog-BJ2rXYwF.css                    [39m[1m[2m    0.17 kB[22m[1m[22m[2m Ôöé gzip:   0.13 kB[22m
+[2mpublic/build/[22m[35massets/Loading-B_OuPlvn.css                        [39m[1m[2m    0.75 kB[22m[1m[22m[2m Ôöé gzip:   0.34 kB[22m
+[2mpublic/build/[22m[35massets/Index-aWNn46P4.css                          [39m[1m[2m    1.17 kB[22m[1m[22m[2m Ôöé gzip:   0.42 kB[22m
+[2mpublic/build/[22m[35massets/AuthenticationCard-CwdAs0hU.css             [39m[1m[2m    1.22 kB[22m[1m[22m[2m Ôöé gzip:   0.59 kB[22m
+[2mpublic/build/[22m[35massets/Dashboard-uFVz4Muh.css                      [39m[1m[2m    1.44 kB[22m[1m[22m[2m Ôöé gzip:   0.53 kB[22m
+[2mpublic/build/[22m[35massets/Show-DmP5Bja5.css                           [39m[1m[2m    1.60 kB[22m[1m[22m[2m Ôöé gzip:   0.56 kB[22m
+[2mpublic/build/[22m[35massets/AppLayout-Ban6r1VJ.css                      [39m[1m[2m    2.50 kB[22m[1m[22m[2m Ôöé gzip:   0.83 kB[22m
+[2mpublic/build/[22m[35massets/app-gYgNWDxz.css                            [39m[1m[2m  435.82 kB[22m[1m[22m[2m Ôöé gzip:  60.18 kB[22m
+[2mpublic/build/[22m[36massets/isologo-suns-power-mx-BppvaZ4F.js           [39m[1m[2m    0.08 kB[22m[1m[22m[2m Ôöé gzip:   0.10 kB[22m
+[2mpublic/build/[22m[36massets/_plugin-vue_export-helper-DlAUqK2U.js       [39m[1m[2m    0.09 kB[22m[1m[22m[2m Ôöé gzip:   0.10 kB[22m
+[2mpublic/build/[22m[36massets/format-BU7CCDHl.js                          [39m[1m[2m    0.29 kB[22m[1m[22m[2m Ôöé gzip:   0.23 kB[22m
+[2mpublic/build/[22m[36massets/InputLabel-BFD28Pgd.js                      [39m[1m[2m    0.32 kB[22m[1m[22m[2m Ôöé gzip:   0.25 kB[22m
+[2mpublic/build/[22m[36massets/SectionBorder-DJGcMdZl.js                   [39m[1m[2m    0.33 kB[22m[1m[22m[2m Ôöé gzip:   0.25 kB[22m
+[2mpublic/build/[22m[36massets/AuthenticationCardLogo-BQ8boBY0.js          [39m[1m[2m    0.34 kB[22m[1m[22m[2m Ôöé gzip:   0.28 kB[22m
+[2mpublic/build/[22m[36massets/ActionMessage-BnB-bOSl.js                   [39m[1m[2m    0.44 kB[22m[1m[22m[2m Ôöé gzip:   0.32 kB[22m
+[2mpublic/build/[22m[36massets/SectionTitle-CKAWaseT.js                    [39m[1m[2m    0.51 kB[22m[1m[22m[2m Ôöé gzip:   0.33 kB[22m
+[2mpublic/build/[22m[36massets/SecondaryButton-CXC0-GSt.js                 [39m[1m[2m    0.54 kB[22m[1m[22m[2m Ôöé gzip:   0.38 kB[22m
+[2mpublic/build/[22m[36massets/Checkbox-DCLx8Bhv.js                        [39m[1m[2m    0.54 kB[22m[1m[22m[2m Ôöé gzip:   0.38 kB[22m
+[2mpublic/build/[22m[36massets/DangerButton-Ce1zthFB.js                    [39m[1m[2m    0.55 kB[22m[1m[22m[2m Ôöé gzip:   0.37 kB[22m
+[2mpublic/build/[22m[36massets/PrimaryButton-IPWk8X7U.js                   [39m[1m[2m    0.58 kB[22m[1m[22m[2m Ôöé gzip:   0.39 kB[22m
+[2mpublic/build/[22m[36massets/PrivacyPolicy-D_-V-kWY.js                   [39m[1m[2m    0.68 kB[22m[1m[22m[2m Ôöé gzip:   0.45 kB[22m
+[2mpublic/build/[22m[36massets/TermsOfService-CTqyUrsL.js                  [39m[1m[2m    0.69 kB[22m[1m[22m[2m Ôöé gzip:   0.45 kB[22m
+[2mpublic/build/[22m[36massets/TextInput-LZ-Lpsev.js                       [39m[1m[2m    0.74 kB[22m[1m[22m[2m Ôöé gzip:   0.46 kB[22m
+[2mpublic/build/[22m[36massets/FormSection-Bion71ne.js                     [39m[1m[2m    0.94 kB[22m[1m[22m[2m Ôöé gzip:   0.54 kB[22m
+[2mpublic/build/[22m[36massets/Index-6d-rWSvX.js                           [39m[1m[2m    1.16 kB[22m[1m[22m[2m Ôöé gzip:   0.63 kB[22m
+[2mpublic/build/[22m[36massets/AuthenticationCard-DnY7NEVo.js              [39m[1m[2m    1.30 kB[22m[1m[22m[2m Ôöé gzip:   0.73 kB[22m
+[2mpublic/build/[22m[36massets/ConfirmPassword-62WSIDD3.js                 [39m[1m[2m    1.55 kB[22m[1m[22m[2m Ôöé gzip:   0.86 kB[22m
+[2mpublic/build/[22m[36massets/ForgotPassword-DiMkhtht.js                  [39m[1m[2m    1.66 kB[22m[1m[22m[2m Ôöé gzip:   0.93 kB[22m
+[2mpublic/build/[22m[36massets/Show-iBT9EUpI.js                            [39m[1m[2m    1.86 kB[22m[1m[22m[2m Ôöé gzip:   0.90 kB[22m
+[2mpublic/build/[22m[36massets/VerifyEmail-7oIEtpU_.js                     [39m[1m[2m    1.96 kB[22m[1m[22m[2m Ôöé gzip:   0.99 kB[22m
+[2mpublic/build/[22m[36massets/Login-C-PG6EHq.js                           [39m[1m[2m    2.17 kB[22m[1m[22m[2m Ôöé gzip:   1.18 kB[22m
+[2mpublic/build/[22m[36massets/ResetPassword-BkRR47Mc.js                   [39m[1m[2m    2.20 kB[22m[1m[22m[2m Ôöé gzip:   0.90 kB[22m
+[2mpublic/build/[22m[36massets/DeleteUserForm-BoWevnBN.js                  [39m[1m[2m    2.28 kB[22m[1m[22m[2m Ôöé gzip:   1.08 kB[22m
+[2mpublic/build/[22m[36massets/TwoFactorChallenge-rLauE6-B.js              [39m[1m[2m    2.49 kB[22m[1m[22m[2m Ôöé gzip:   1.12 kB[22m
+[2mpublic/build/[22m[36massets/UpdatePasswordForm-CbOtRM_k.js              [39m[1m[2m    2.63 kB[22m[1m[22m[2m Ôöé gzip:   0.98 kB[22m
+[2mpublic/build/[22m[36massets/Index-DuK3msY9.js                           [39m[1m[2m    2.69 kB[22m[1m[22m[2m Ôöé gzip:   1.26 kB[22m
+[2mpublic/build/[22m[36massets/Loading-CrfRkM3W.js                         [39m[1m[2m    2.80 kB[22m[1m[22m[2m Ôöé gzip:   1.30 kB[22m
+[2mpublic/build/[22m[36massets/DialogModal-DmnqKmhY.js                     [39m[1m[2m    3.22 kB[22m[1m[22m[2m Ôöé gzip:   1.32 kB[22m
+[2mpublic/build/[22m[36massets/UpdateProfileInformationForm-66YIoKwe.js    [39m[1m[2m    4.09 kB[22m[1m[22m[2m Ôöé gzip:   1.78 kB[22m
+[2mpublic/build/[22m[36massets/LogoutOtherBrowserSessionsForm-BIMR5gYF.js  [39m[1m[2m    4.19 kB[22m[1m[22m[2m Ôöé gzip:   1.86 kB[22m
+[2mpublic/build/[22m[36massets/AbonoDialog-kPhAbXGe.js                     [39m[1m[2m    4.56 kB[22m[1m[22m[2m Ôöé gzip:   2.00 kB[22m
+[2mpublic/build/[22m[36massets/Register-DCiQr38g.js                        [39m[1m[2m    4.67 kB[22m[1m[22m[2m Ôöé gzip:   1.65 kB[22m
+[2mpublic/build/[22m[36massets/AppLayout-BcgGBnUB.js                       [39m[1m[2m    4.85 kB[22m[1m[22m[2m Ôöé gzip:   1.90 kB[22m
+[2mpublic/build/[22m[36massets/Dashboard-CN42x9jS.js                       [39m[1m[2m    5.27 kB[22m[1m[22m[2m Ôöé gzip:   1.92 kB[22m
+[2mpublic/build/[22m[36massets/ApiTokenManager-CAWWPLfz.js                 [39m[1m[2m    6.98 kB[22m[1m[22m[2m Ôöé gzip:   2.69 kB[22m
+[2mpublic/build/[22m[36massets/TwoFactorAuthenticationForm-BkHxzV3n.js     [39m[1m[2m    7.23 kB[22m[1m[22m[2m Ôöé gzip:   2.61 kB[22m
+[2mpublic/build/[22m[36massets/Show-D4i4RZe_.js                            [39m[1m[2m   10.50 kB[22m[1m[22m[2m Ôöé gzip:   3.25 kB[22m
+[2mpublic/build/[22m[36massets/Welcome-DL4bagqh.js                         [39m[1m[2m   18.52 kB[22m[1m[22m[2m Ôöé gzip:   6.14 kB[22m
+[2mpublic/build/[22m[36massets/app-2Xcum__a.js                             [39m[1m[33m1,352.82 kB[39m[22m[2m Ôöé gzip: 435.24 kB[22m
+npm.cmd : [33m
+En línea: 1 Carácter: 1
++ npm.cmd run build 2>&1 | Out-File -FilePath build-output.txt -Encodin ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via 
+build.chunkSizeWarningLimit.[39m
+[32mÔ£ô built in 17.63s[39m

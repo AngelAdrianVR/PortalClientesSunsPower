@@ -9,6 +9,12 @@ use Tests\TestCase;
 
 class CreateApiTokenTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->markTestSkipped('Flujos de usuarios del ERP/Jetstream retirados del portal (se autentica con la tabla clients).');
+    }
+
     use RefreshDatabase;
 
     public function test_api_tokens_can_be_created(): void

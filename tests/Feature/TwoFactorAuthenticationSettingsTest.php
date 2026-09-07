@@ -9,6 +9,12 @@ use Tests\TestCase;
 
 class TwoFactorAuthenticationSettingsTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->markTestSkipped('Flujos de usuarios del ERP/Jetstream retirados del portal (se autentica con la tabla clients).');
+    }
+
     use RefreshDatabase;
 
     public function test_two_factor_authentication_can_be_enabled(): void

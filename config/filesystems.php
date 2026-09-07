@@ -60,6 +60,18 @@ return [
             'report' => false,
         ],
 
+        /*
+        | Disco compartido con el storage público del ERP (sunsPowerMX).
+        | Ahí se guardan los comprobantes de abonos del portal para que el
+        | ERP pueda servirlos con su propio enlace /storage.
+        */
+        'erp_media' => [
+            'driver' => 'local',
+            'root' => env('ERP_STORAGE_PATH', dirname(base_path(), 2).'/sunsPowerMX/storage/app/public'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

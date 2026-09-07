@@ -37,7 +37,16 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            //
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+            ],
+            'portalClient' => function () use ($request) {
+                /** @var \App\Models\Client|null $client */
+                $client = $request->user('portal');
+
+                return $client ? ['id' => $client->id, 'name' => $client->name] : null;
+            },
         ];
     }
 }

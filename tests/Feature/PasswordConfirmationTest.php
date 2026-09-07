@@ -8,6 +8,12 @@ use Tests\TestCase;
 
 class PasswordConfirmationTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->markTestSkipped('Flujos de usuarios del ERP/Jetstream retirados del portal (se autentica con la tabla clients).');
+    }
+
     use RefreshDatabase;
 
     public function test_confirm_password_screen_can_be_rendered(): void

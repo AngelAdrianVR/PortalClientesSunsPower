@@ -29,6 +29,11 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // El portal NO usa las rutas de Fortify (login/registro/reset de la
+        // tabla `users`). El acceso al portal lo maneja PortalAuthController
+        // autenticando contra la tabla `clients` (guard 'portal').
+        Fortify::ignoreRoutes();
+
         Fortify::createUsersUsing(CreateNewUser::class);
         Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);

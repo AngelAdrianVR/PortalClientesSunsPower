@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'guard' => 'web',
+    'guard' => 'portal',
 
     /*
     |--------------------------------------------------------------------------
@@ -162,19 +162,16 @@ return [
     */
 
     'features' => [
-        Features::registration(),
-        Features::resetPasswords(),
+        // Los usuarios del portal son clientes del ERP (tabla `clients`);
+        // por eso el registro público y las cuentas de `users` no aplican.
+        // Features::registration(),
+        // Features::resetPasswords(),
         // Features::emailVerification(),
+        // Features::twoFactorAuthentication([...]),
+        // Features::passkeys([...]),
+
         Features::updateProfileInformation(),
         Features::updatePasswords(),
-        Features::twoFactorAuthentication([
-            'confirm' => true,
-            'confirmPassword' => true,
-            // 'window' => 0,
-        ]),
-        Features::passkeys([
-            'confirmPassword' => true,
-        ]),
     ],
 
 ];
