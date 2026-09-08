@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\PortalPayment;
 use App\Models\ServiceOrder;
 use App\Services\PortfolioService;
+use App\Services\ReceiptService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -85,7 +86,8 @@ class ServiceController extends Controller
                 'interest_amount' => round((float) $p->interest_amount, 2),
                 'method' => $p->method,
                 'reference' => $p->reference,
-                'receipt_id' => $p->getFirstMedia('receipts')?->id,
+                'notes' => $p->notes,
+                'receipt_url' => ReceiptService::url($p->getFirstMedia('receipts')),
             ]);
 
         $abonos = PortalPayment::query()
@@ -103,7 +105,7 @@ class ServiceController extends Controller
                 'reference' => $p->reference,
                 'status' => $p->status,
                 'rejection_reason' => $p->rejection_reason,
-                'receipt_id' => $p->getFirstMedia('receipts')?->id,
+                'receipt_url' => ReceiptService::url($p->getFirstMedia('receipts')),
             ]);
 
         return Inertia::render('Services/Show', [

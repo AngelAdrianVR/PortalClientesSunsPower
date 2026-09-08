@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import AbonoDialog from './AbonoDialog.vue';
+import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
 
 const props = defineProps({
@@ -16,7 +16,11 @@ const props = defineProps({
 });
 
 const activeTab = ref('info');
-const abonoVisible = ref(false);
+
+// Si llega con ?pagar=1&monto=… (botones "Pagar" del panel) se abre el registro de abono.
+const payQuery = new URLSearchParams(window.location.search);
+const abonoVisible = ref(payQuery.get('pagar') === '1');
+const suggestedAmount = payQuery.get('monto') ? Number(payQuery.get('monto')) : null;
 
 const totalPaid = computed(() => Math.max(0, props.service.total_amount - props.balance));
 const overdueInterest = computed(() => props.installments.reduce((sum, i) => sum + Number(i.interest || 0), 0));
@@ -56,6 +60,11 @@ function onAbonoSuccess() {
     abonoVisible.value = false;
     router.reload({ only: ['payments', 'abonos', 'balance'], preserveScroll: true });
 }
+
+/** Abre el estado de cuenta de este servicio en una pestaña nueva (sin AppLayout). */
+function openStatement() {
+    window.open(route('statement.view') + '?servicio=' + props.service.id, '_blank');
+}
 </script>
 
 <template>
@@ -74,12 +83,10 @@ function onAbonoSuccess() {
                 </div>
             </div>
 
-            <a :href="route('services.statement', service.id)" class="statement-link">
-                <el-button type="primary" plain>
-                    <el-icon><Download /></el-icon>
-                    Descargar estado de cuenta
-                </el-button>
-            </a>
+            <el-button type="primary" plain class="statement-link" @click="openStatement">
+                <el-icon><Download /></el-icon>
+                Ver estado de cuenta
+            </el-button>
         </div>
 
         <el-alert
@@ -185,12 +192,10 @@ function onAbonoSuccess() {
                         </div>
                     </div>
 
-                    <a :href="route('services.statement', service.id)">
-                        <el-button type="primary" plain>
-                            <el-icon><Download /></el-icon>
-                            Descargar PDF
-                        </el-button>
-                    </a>
+                    <el-button type="primary" plain @click="openStatement">
+                        <el-icon><Download /></el-icon>
+                        Ver estado de cuenta
+                    </el-button>
                 </el-tab-pane>
 
                 <el-tab-pane name="payments">
@@ -235,9 +240,10 @@ function onAbonoSuccess() {
                         </el-table-column>
                         <el-table-column label="Comprobante" width="110" align="center">
                             <template #default="{ row }">
-                                <a :href="route('media.download', row.receipt_id)" target="_blank">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
                                     <el-button link type="primary" size="small">Ver</el-button>
                                 </a>
+                                <span v-else class="muted">—</span>
                             </template>
                         </el-table-column>
                     </el-table>
@@ -258,9 +264,15 @@ function onAbonoSuccess() {
                         </el-table-column>
                         <el-table-column prop="method" label="Método" width="120" />
                         <el-table-column prop="reference" label="Referencia" min-width="120" show-overflow-tooltip />
+                        <el-table-column prop="notes" label="Notas" min-width="140" show-overflow-tooltip>
+                            <template #default="{ row }">
+                                <span v-if="row.notes">{{ row.notes }}</span>
+                                <span v-else class="muted">—</span>
+                            </template>
+                        </el-table-column>
                         <el-table-column label="Comprobante" width="110" align="center">
                             <template #default="{ row }">
-                                <a v-if="row.receipt_id" :href="route('media.download', row.receipt_id)" target="_blank">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
                                     <el-button link type="primary" size="small">Ver</el-button>
                                 </a>
                                 <span v-else class="muted">—</span>
@@ -275,8 +287,10 @@ function onAbonoSuccess() {
         <AbonoDialog
             v-model:visible="abonoVisible"
             :service-id="service.id"
+            :service-number="service.service_number"
             :methods="methods"
             :balance="balance"
+            :initial-amount="suggestedAmount"
             @success="onAbonoSuccess"
         />
     </AppLayout>

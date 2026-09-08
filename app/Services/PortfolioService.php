@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Client;
 use App\Models\Payment;
 use App\Models\PaymentInstallment;
+use App\Models\PortalPayment;
 use App\Models\ServiceOrder;
 
 /**
@@ -20,11 +21,13 @@ class PortfolioService
     /** Capital pagado por el cliente (excluye intereses moratorios). */
     public static function paidPrincipal(Client $client): float
     {
+        // OJO: el alias NO debe llamarse `principal`: Payment tiene un accessor
+        // getPrincipalAttribute() que enmascararía la columna agregada y devolvería 0.
         $row = $client->payments()
-            ->selectRaw('COALESCE(SUM(amount), 0) - COALESCE(SUM(interest_amount), 0) as principal')
+            ->selectRaw('COALESCE(SUM(amount), 0) - COALESCE(SUM(interest_amount), 0) as paid_principal')
             ->first();
 
-        return round((float) ($row->principal ?? 0), 2);
+        return round((float) ($row->paid_principal ?? 0), 2);
     }
 
     /** Saldo pendiente global del cliente (misma fórmula del ERP). */
@@ -40,11 +43,12 @@ class PortfolioService
     /** Saldo de una orden: total − pagos atribuidos a esa orden. */
     public static function balanceForOrder(ServiceOrder $order): float
     {
+        // Mismo cuidado que en paidPrincipal(): alias distinto de `principal`.
         $row = $order->payments()
-            ->selectRaw('COALESCE(SUM(amount), 0) - COALESCE(SUM(interest_amount), 0) as principal')
+            ->selectRaw('COALESCE(SUM(amount), 0) - COALESCE(SUM(interest_amount), 0) as paid_principal')
             ->first();
 
-        $paid = (float) ($row->principal ?? 0);
+        $paid = (float) ($row->paid_principal ?? 0);
 
         return round(max(0.0, (float) $order->total_amount - $paid), 2);
     }
@@ -64,35 +68,95 @@ class PortfolioService
             ->whereIn('status', self::VISIBLE_STATUSES)
             ->get();
 
+        $serviceMeta = $orders->mapWithKeys(fn (ServiceOrder $o) => [
+            $o->id => [
+                'id' => $o->id,
+                'service_number' => $o->service_number ?: 'Orden #'.$o->id,
+            ],
+        ])->all();
+
         $installments = PaymentInstallment::query()
-            ->whereIn('service_order_id', $orders->pluck('id'))
+            ->whereIn('service_order_id', array_keys($serviceMeta))
             ->whereNull('payment_id')
             ->whereNotIn('status', ['paid', 'on_time'])
-            ->get();
-
-        $overdue = $installments->filter(fn (PaymentInstallment $i) => $i->days_late > 0);
-
-        $next = $installments
-            ->filter(fn (PaymentInstallment $i) => $i->projected_date->gte(today()))
+            ->get()
             ->sortBy(fn (PaymentInstallment $i) => $i->projected_date->timestamp)
-            ->first();
+            ->values();
+
+        // Saldo a capital por servicio (una sola consulta) para el diálogo de pago.
+        $balances = ServiceOrder::query()
+            ->whereIn('id', array_keys($serviceMeta))
+            ->addSelect(['id', 'total_amount', 'paid_principal' => self::paidPrincipalSubquery()])
+            ->get()
+            ->mapWithKeys(fn (ServiceOrder $o) => [
+                $o->id => round(max(0.0, (float) $o->total_amount - (float) ($o->paid_principal ?? 0)), 2),
+            ])
+            ->all();
 
         $inReview = $client->portalPayments()
-            ->where('status', 'En revisión')
+            ->with(['serviceOrder', 'media'])
+            ->where('status', PortalPayment::STATUS_IN_REVIEW)
+            ->latest()
             ->get();
 
+        // Convierte una cuota impaga en la fila del panel "Pagos restantes".
+        $mapRemaining = function (PaymentInstallment $i) use ($serviceMeta, $balances): array {
+            $meta = $serviceMeta[$i->service_order_id] ?? ['service_number' => 'Orden #'.$i->service_order_id];
+            $overdue = $i->days_late > 0;
+
+            return [
+                'service_id' => $i->service_order_id,
+                'service_number' => $meta['service_number'],
+                'service_balance' => $balances[$i->service_order_id] ?? 0.0,
+                'installment_number' => $i->installment_number,
+                'label' => $i->label,
+                'projected_date' => $i->projected_date->format('Y-m-d'),
+                'amount' => round((float) $i->amount, 2),
+                'interest' => $i->calculateInterest(),
+                'total_with_interest' => $i->total_with_interest,
+                'days_late' => $i->days_late,
+                'overdue' => $overdue,
+                // Próxima a vencer con una semana de anticipación (incluye las que
+                // aún están dentro de los días de gracia sin generar recargo).
+                'near_due' => ! $overdue && $i->projected_date->lte(now()->addDays(7)->startOfDay()),
+            ];
+        };
+
+        $remaining = $installments->map($mapRemaining)->all();
+
+        $overdueList = array_values(array_filter($remaining, fn (array $r) => $r['overdue']));
+        $upcomingList = array_values(array_filter($remaining, fn (array $r) => ! $r['overdue']));
+
+        // Todas las órdenes del cliente (cualquier estado): conteo y monto total.
+        $allOrders = $client->serviceOrders()->get(['id', 'total_amount']);
+
         return [
-            'services_count' => $orders->count(),
+            'services_count' => $allOrders->count(),
+            'services_total' => round((float) $allOrders->sum('total_amount'), 2),
             'total_balance' => self::balanceFor($client),
-            'overdue_installments' => $overdue->count(),
-            'overdue_interest' => round($overdue->sum(fn (PaymentInstallment $i) => $i->calculateInterest()), 2),
-            'next_due' => $next ? [
-                'projected_date' => $next->projected_date->format('Y-m-d'),
-                'label' => $next->label,
-                'amount' => round((float) $next->amount, 2),
-            ] : null,
+            'overdue_installments' => count($overdueList),
+            'overdue_interest' => round(array_sum(array_column($overdueList, 'interest')), 2),
+            'next_due' => $upcomingList[0] ?? null,
             'pending_review_count' => $inReview->count(),
             'pending_review_total' => round((float) $inReview->sum('amount'), 2),
+            // Listas para el panel general
+            'remaining_payments' => $remaining,
+            'upcoming_dues' => $upcomingList,
+            'overdue_dues' => $overdueList,
+            'pending_review_abonos' => $inReview->map(function (PortalPayment $p) use ($serviceMeta): array {
+                $meta = $serviceMeta[$p->service_order_id] ?? null;
+
+                return [
+                    'id' => $p->id,
+                    'payment_date' => $p->payment_date?->format('Y-m-d'),
+                    'created_at' => $p->created_at?->format('Y-m-d H:i'),
+                    'amount' => round((float) $p->amount, 2),
+                    'method' => $p->method,
+                    'reference' => $p->reference,
+                    'service_number' => $meta['service_number'] ?? ($p->serviceOrder?->service_number ?? 'Orden #'.$p->service_order_id),
+                    'receipt_url' => ReceiptService::url($p->getFirstMedia('receipts')),
+                ];
+            })->all(),
         ];
     }
 }

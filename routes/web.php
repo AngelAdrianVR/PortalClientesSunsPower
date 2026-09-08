@@ -39,6 +39,10 @@ Route::middleware('auth:portal')->group(function () {
     Route::get('/servicios/{serviceOrder}', [ServiceController::class, 'show'])->name('services.show');
     Route::get('/servicios/{serviceOrder}/estado-cuenta', [StatementController::class, 'download'])->name('services.statement');
 
+    // Estado de cuenta en pantalla (pestaña nueva, sin AppLayout)
+    Route::get('/estado-cuenta', [StatementController::class, 'view'])->name('statement.view');
+    Route::get('/estado-cuenta/descargar', [StatementController::class, 'downloadAll'])->name('statement.download-all');
+
     // Abonos del cliente (validación manual por el ERP)
     Route::post('/abonos', [PortalPaymentController::class, 'store'])->name('portal-payments.store');
 

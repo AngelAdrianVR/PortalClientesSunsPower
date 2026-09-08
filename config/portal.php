@@ -17,4 +17,19 @@ return [
     */
     'login_password_required' => false,
 
+    /*
+    |--------------------------------------------------------------------------
+    | URL pública de los comprobantes (storage del ERP)
+    |--------------------------------------------------------------------------
+    |
+    | Base (incluye `/storage`) con la que el ERP sirve los comprobantes
+    | compartidos, p. ej. `https://erp-spmx.com/storage`. Se usa para enlazar
+    | los comprobantes directo al dominio real del ERP, de modo que puedan
+    | verse aunque el portal corra en local o en un subdominio.
+    |
+    | Si queda vacío, se conserva la descarga autenticada vía el portal
+    | (ruta `media.download`).
+    */
+    'erp_storage_url' => rtrim((string) env('ERP_STORAGE_URL', ''), '/'),
+
 ];

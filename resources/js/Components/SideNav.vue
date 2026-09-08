@@ -18,10 +18,27 @@ const emit = defineEmits(['update:drawerVisible']);
 const page = usePage();
 const collapsed = ref(false);
 
+const portalClient = computed(() => page.props.portalClient);
+
 const drawer = computed({
     get: () => props.drawerVisible,
     set: (value) => emit('update:drawerVisible', value),
 });
+
+const initials = computed(() => {
+    const name = portalClient.value?.name || 'C';
+
+    return name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((word) => word[0].toUpperCase())
+        .join('');
+});
+
+function logout() {
+    router.post(route('logout'));
+}
 
 const activeIndex = computed(() => {
     const url = page.url || '';
@@ -85,26 +102,43 @@ function goDashboard() {
 
     <!-- Sidenav móvil -->
     <el-drawer v-model="drawer" direction="ltr" size="264px" :with-header="false">
-        <div class="portal-brand portal-brand--drawer" @click="goDashboard">
-            <img
-                src="/images/isologo-suns-power-mx.png"
-                alt="SUN'S POWER MX"
-                class="portal-logo"
-                onerror="this.style.display='none'"
-            />
-            <span class="portal-brand-name">SUN'S POWER MX</span>
-        </div>
+        <div class="drawer-body">
+            <div class="portal-brand portal-brand--drawer" @click="goDashboard">
+                <img
+                    src="/images/isologo-suns-power-mx.png"
+                    alt="SUN'S POWER MX"
+                    class="portal-logo"
+                    onerror="this.style.display='none'"
+                />
+                <span class="portal-brand-name">SUN'S POWER MX</span>
+            </div>
 
-        <el-menu :default-active="activeIndex" class="portal-menu" @select="onSelect">
-            <el-menu-item index="/dashboard">
-                <el-icon><Odometer /></el-icon>
-                <template #title>Dashboard</template>
-            </el-menu-item>
-            <el-menu-item index="/servicios">
-                <el-icon><Grid /></el-icon>
-                <template #title>Servicios</template>
-            </el-menu-item>
-        </el-menu>
+            <el-menu :default-active="activeIndex" class="portal-menu" @select="onSelect">
+                <el-menu-item index="/dashboard">
+                    <el-icon><Odometer /></el-icon>
+                    <template #title>Dashboard</template>
+                </el-menu-item>
+                <el-menu-item index="/servicios">
+                    <el-icon><Grid /></el-icon>
+                    <template #title>Servicios</template>
+                </el-menu-item>
+            </el-menu>
+
+            <!-- Usuario + cierre de sesión al pie del sidenav (solo móvil) -->
+            <div v-if="portalClient" class="drawer-user">
+                <div class="drawer-user-main">
+                    <el-avatar :size="34" class="portal-avatar">{{ initials }}</el-avatar>
+                    <div class="drawer-user-info">
+                        <span class="drawer-user-name">{{ portalClient.name }}</span>
+                        <span class="drawer-user-role">Cliente del portal</span>
+                    </div>
+                </div>
+                <el-button class="drawer-logout" plain @click="logout">
+                    <el-icon><SwitchButton /></el-icon>
+                    Cerrar sesión
+                </el-button>
+            </div>
+        </div>
     </el-drawer>
 </template>
 
@@ -199,5 +233,66 @@ function goDashboard() {
 .collapse-btn {
     width: 100%;
     color: #1e3a8a;
+}
+
+.drawer-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.drawer-user {
+    margin-top: auto;
+    border-top: 1px solid #f0f2f5;
+    padding: 14px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.drawer-user-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.portal-avatar {
+    background: #1e3a8a;
+    color: #fff;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.drawer-user-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.drawer-user-name {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drawer-user-role {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.drawer-logout {
+    width: 100%;
+    justify-content: flex-start;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.drawer-logout:hover {
+    background: #fef2f2;
+    color: #b91c1c;
 }
 </style>
