@@ -4,6 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
+import { isFixedPaymentPlan } from '@/utils/plan';
 
 const props = defineProps({
     service: { type: Object, required: true },
@@ -20,7 +21,32 @@ const activeTab = ref('info');
 // Si llega con ?pagar=1&monto=… (botones "Pagar" del panel) se abre el registro de abono.
 const payQuery = new URLSearchParams(window.location.search);
 const abonoVisible = ref(payQuery.get('pagar') === '1');
-const suggestedAmount = payQuery.get('monto') ? Number(payQuery.get('monto')) : null;
+const suggestedAmount = ref(null);
+
+/**
+ * Monto fijo de la próxima cuota pendiente cuando el plan es de mensualidades
+ * fijas (3/6/9/12 MSI): total con interés si la cuota está vencida, monto base si no.
+ */
+function fixedPlanSuggestedAmount() {
+    if (!isFixedPaymentPlan(props.service.payment_method)) {
+        return null;
+    }
+
+    const pending = props.installments.find((i) => !['paid', 'on_time'].includes(i.status));
+
+    if (!pending) {
+        return null;
+    }
+
+    return pending.days_late > 0 ? Number(pending.total_with_interest) : Number(pending.amount);
+}
+
+suggestedAmount.value = Number(payQuery.get('monto')) > 0 ? Number(payQuery.get('monto')) : fixedPlanSuggestedAmount();
+
+function openAbono() {
+    suggestedAmount.value = fixedPlanSuggestedAmount();
+    abonoVisible.value = true;
+}
 
 const totalPaid = computed(() => Math.max(0, props.service.total_amount - props.balance));
 const overdueInterest = computed(() => props.installments.reduce((sum, i) => sum + Number(i.interest || 0), 0));
@@ -207,7 +233,7 @@ function openStatement() {
                     <div class="payments-actions">
                         <el-tooltip :disabled="balance > 0" content="No tienes saldo pendiente para abonar" placement="top">
                             <span>
-                                <el-button type="primary" :disabled="balance <= 0" @click="abonoVisible = true">
+                                <el-button type="primary" :disabled="balance <= 0" @click="openAbono">
                                     <el-icon><Plus /></el-icon>
                                     Registrar abono
                                 </el-button>
@@ -288,6 +314,7 @@ function openStatement() {
             v-model:visible="abonoVisible"
             :service-id="service.id"
             :service-number="service.service_number"
+            :payment-method="service.payment_method"
             :methods="methods"
             :balance="balance"
             :initial-amount="suggestedAmount"

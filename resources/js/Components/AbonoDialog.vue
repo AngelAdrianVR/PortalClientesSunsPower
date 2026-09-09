@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { fmtMoney } from '@/utils/format';
+import { isFixedPaymentPlan } from '@/utils/plan';
 
 /**
  * Diálogo de registro de pago/abono (reutilizable: dashboard y detalle de servicio).
@@ -22,6 +23,8 @@ const props = defineProps({
     balance: { type: Number, default: 0 },
     /** Monto sugerido a pre-cargar (cuota a pagar); editable por el usuario. */
     initialAmount: { type: Number, default: null },
+    /** Plan de pago del servicio (p. ej. "6 MSI", "Personalizado" o vacío). */
+    paymentMethod: { type: String, default: null },
 });
 
 const emit = defineEmits(['update:visible', 'success']);
@@ -31,21 +34,30 @@ const dialogVisible = computed({
     set: (value) => emit('update:visible', value),
 });
 
+/** Plan de mensualidad fija (3/6/9/12 MSI): el monto a registrar es fijo y no se puede editar. */
+const amountLocked = computed(() => isFixedPaymentPlan(props.paymentMethod));
+
 const currentStep = ref(1);
 const fileList = ref([]);
 
 const form = useForm({
     service_order_id: props.serviceId,
     amount: null,
-    payment_date: new Date().toISOString().slice(0, 10),
+    payment_date: today(),
     method: props.methods?.[0] || 'Transferencia',
     reference: '',
     notes: '',
     proof: null,
 });
 
+/** Fecha local de hoy en formato YYYY-MM-DD (fecha que toma el pago por defecto). */
 function today() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
 }
 
 function resetState() {
@@ -103,8 +115,6 @@ function onFileRemove() {
     form.proof = null;
     fileList.value = [];
 }
-
-const disabledDate = (date) => date.getTime() > Date.now();
 
 function validateStep1() {
     let valid = true;
@@ -186,7 +196,7 @@ function submit() {
         </el-steps>
 
         <el-form label-position="top" class="abono-form">
-            <!-- Paso 1: monto + fecha + método -->
+            <!-- Paso 1: monto (fecha se toma automáticamente = hoy) + método -->
             <div v-if="currentStep === 1" class="step-body">
                 <el-alert
                     type="info"
@@ -207,38 +217,30 @@ function submit() {
                         :precision="2"
                         :step="100"
                         :controls-position="'right'"
+                        :disabled="amountLocked"
                         style="width: 100%"
                         placeholder="0.00"
                     />
                     <div class="field-hint">
-                        <template v-if="initialAmount && initialAmount > 0">
+                        <template v-if="amountLocked">
+                            <el-icon class="hint-lock"><Lock /></el-icon>
+                            <span>
+                                Mensualidad fija de tu plan <strong>{{ paymentMethod }}</strong>:
+                                {{ fmtMoney(form.amount) }} — este monto no puede modificarse.
+                            </span>
+                        </template>
+                        <template v-else-if="initialAmount && initialAmount > 0">
                             Monto sugerido para esta cuota: {{ fmtMoney(initialAmount) }} (puedes ajustarlo).
                         </template>
                         <template v-else>Indica cuánto vas a abonar a este servicio.</template>
                     </div>
                 </el-form-item>
 
-                <el-row :gutter="12">
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item label="Fecha del pago" :error="form.errors.payment_date" required>
-                            <el-date-picker
-                                v-model="form.payment_date"
-                                type="date"
-                                value-format="YYYY-MM-DD"
-                                format="DD/MM/YYYY"
-                                :disabled-date="disabledDate"
-                                style="width: 100%"
-                            />
-                        </el-form-item>
-                    </el-col>
-                    <el-col :xs="24" :sm="12">
-                        <el-form-item label="Método de pago" :error="form.errors.method" required>
-                            <el-select v-model="form.method" style="width: 100%">
-                                <el-option v-for="method in methods" :key="method" :label="method" :value="method" />
-                            </el-select>
-                        </el-form-item>
-                    </el-col>
-                </el-row>
+                <el-form-item label="Método de pago" :error="form.errors.method" required>
+                    <el-select v-model="form.method" style="width: 100%">
+                        <el-option v-for="method in methods" :key="method" :label="method" :value="method" />
+                    </el-select>
+                </el-form-item>
             </div>
 
             <!-- Paso 2: referencia + notas -->
@@ -321,6 +323,16 @@ function submit() {
     color: #94a3b8;
     line-height: 1.4;
     margin-top: 4px;
+}
+
+.field-hint strong {
+    color: #64748b;
+}
+
+.hint-lock {
+    vertical-align: -2px;
+    margin-right: 4px;
+    color: #64748b;
 }
 
 .review-alert {

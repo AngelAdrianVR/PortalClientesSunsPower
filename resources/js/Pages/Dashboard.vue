@@ -25,6 +25,7 @@ const payServiceId = ref(null);
 const payServiceNumber = ref('');
 const payBalance = ref(0);
 const payInitialAmount = ref(null);
+const payPaymentMethod = ref(null);
 
 function goToServices() {
     router.visit(route('services.index'));
@@ -52,6 +53,7 @@ function startPayment(row) {
     payServiceNumber.value = row.service_number || '';
     payBalance.value = Number(row.service_balance || 0);
     payInitialAmount.value = row.overdue ? Number(row.total_with_interest) : Number(row.amount);
+    payPaymentMethod.value = row.payment_method || null;
     payVisible.value = true;
 }
 
@@ -286,6 +288,7 @@ function dueClass(row) {
                 v-model:visible="payVisible"
                 :service-id="payServiceId"
                 :service-number="payServiceNumber"
+                :payment-method="payPaymentMethod"
                 :methods="methods"
                 :balance="payBalance"
                 :initial-amount="payInitialAmount"

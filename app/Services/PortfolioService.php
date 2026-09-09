@@ -72,6 +72,7 @@ class PortfolioService
             $o->id => [
                 'id' => $o->id,
                 'service_number' => $o->service_number ?: 'Orden #'.$o->id,
+                'payment_method' => $o->payment_method,
             ],
         ])->all();
 
@@ -107,6 +108,7 @@ class PortfolioService
             return [
                 'service_id' => $i->service_order_id,
                 'service_number' => $meta['service_number'],
+                'payment_method' => $meta['payment_method'] ?? null,
                 'service_balance' => $balances[$i->service_order_id] ?? 0.0,
                 'installment_number' => $i->installment_number,
                 'label' => $i->label,
