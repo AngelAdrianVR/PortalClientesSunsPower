@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import AbonoDialog from './AbonoDialog.vue';
+import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
+import { hasPaymentPlan, isFixedPaymentPlan, NO_PLAN_MESSAGE } from '@/utils/plan';
 
 const props = defineProps({
     service: { type: Object, required: true },
@@ -16,7 +17,69 @@ const props = defineProps({
 });
 
 const activeTab = ref('info');
-const abonoVisible = ref(false);
+
+/** ¿El proveedor ya asignó un plan de pago a este servicio? (sin plan no se puede pagar). */
+const hasPlan = computed(() => hasPaymentPlan(props.service.payment_method));
+
+/** El registro de pago solo se habilita con saldo pendiente y plan asignado. */
+const canPay = computed(() => props.balance > 0 && hasPlan.value);
+
+/** Motivo por el que el botón "Registrar abono" está deshabilitado. */
+const payBlockedMessage = computed(() =>
+    hasPlan.value ? 'No tienes saldo pendiente para abonar' : NO_PLAN_MESSAGE
+);
+
+const noPlanMessage = NO_PLAN_MESSAGE;
+
+// Si llega con ?pagar=1&monto=… (botones "Pagar" del panel) se abre el registro de abono.
+const payQuery = new URLSearchParams(window.location.search);
+const abonoVisible = ref(payQuery.get('pagar') === '1' && canPay.value);
+const suggestedAmount = ref(null);
+
+/** Próxima cuota pendiente de la proyección (la primera sin pago). */
+function nextPendingInstallment() {
+    return props.installments.find((i) => !['paid', 'on_time'].includes(i.status)) || null;
+}
+
+/**
+ * Monto fijo de la próxima cuota pendiente cuando el plan es de mensualidades
+ * fijas (3/6/9/12 MSI): total con interés si la cuota está vencida, monto base si no.
+ */
+function fixedPlanSuggestedAmount() {
+    if (!isFixedPaymentPlan(props.service.payment_method)) {
+        return null;
+    }
+
+    const pending = nextPendingInstallment();
+
+    if (!pending) {
+        return null;
+    }
+
+    return pending.days_late > 0 ? Number(pending.total_with_interest) : Number(pending.amount);
+}
+
+suggestedAmount.value = Number(payQuery.get('monto')) > 0 ? Number(payQuery.get('monto')) : fixedPlanSuggestedAmount();
+
+/**
+ * Cuota de la proyección a la que se aplicará el abono: el ERP la usa al validar
+ * para vincular el pago a la mensualidad correspondiente (nota "Pago N").
+ */
+const abonoInstallmentNumber = ref(nextPendingInstallment()?.installment_number ?? null);
+
+/** ¿El monto sugerido incluye interés moratorio? (muestra la nota en el diálogo). */
+const abonoIncludesInterest = ref(Number(nextPendingInstallment()?.interest || 0) > 0);
+
+function openAbono() {
+    if (!canPay.value) {
+        return;
+    }
+
+    suggestedAmount.value = fixedPlanSuggestedAmount();
+    abonoInstallmentNumber.value = nextPendingInstallment()?.installment_number ?? null;
+    abonoIncludesInterest.value = Number(nextPendingInstallment()?.interest || 0) > 0;
+    abonoVisible.value = true;
+}
 
 const totalPaid = computed(() => Math.max(0, props.service.total_amount - props.balance));
 const overdueInterest = computed(() => props.installments.reduce((sum, i) => sum + Number(i.interest || 0), 0));
@@ -56,6 +119,11 @@ function onAbonoSuccess() {
     abonoVisible.value = false;
     router.reload({ only: ['payments', 'abonos', 'balance'], preserveScroll: true });
 }
+
+/** Abre el estado de cuenta de este servicio en una pestaña nueva (sin AppLayout). */
+function openStatement() {
+    window.open(route('statement.view') + '?servicio=' + props.service.id, '_blank');
+}
 </script>
 
 <template>
@@ -74,16 +142,14 @@ function onAbonoSuccess() {
                 </div>
             </div>
 
-            <a :href="route('services.statement', service.id)" class="statement-link">
-                <el-button type="primary" plain>
-                    <el-icon><Download /></el-icon>
-                    Descargar estado de cuenta
-                </el-button>
-            </a>
+            <el-button type="primary" plain class="statement-link" @click="openStatement">
+                <el-icon><Download /></el-icon>
+                Ver estado de cuenta
+            </el-button>
         </div>
 
         <el-alert
-            v-if="balance > 0"
+            v-if="balance > 0 && hasPlan"
             type="info"
             show-icon
             :closable="false"
@@ -95,46 +161,61 @@ function onAbonoSuccess() {
             Puedes registrar abonos desde la pestaña Pagos; quedarán en revisión hasta que la empresa valide el comprobante.
         </el-alert>
 
+        <el-alert
+            v-else-if="balance > 0 && !hasPlan"
+            type="warning"
+            show-icon
+            :closable="false"
+            class="balance-alert"
+        >
+            <template #title>
+                Saldo pendiente de este servicio: <strong>{{ fmtMoney(balance) }}</strong>
+            </template>
+            {{ noPlanMessage }}
+        </el-alert>
+
         <el-card shadow="never" class="panel">
             <el-tabs v-model="activeTab">
                 <el-tab-pane label="Información" name="info">
-                    <el-descriptions :column="2" border size="default" class="info-desc">
-                        <el-descriptions-item label="Cliente">{{ client.name }}</el-descriptions-item>
-                        <el-descriptions-item label="RFC">{{ client.tax_id || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Tipo de sistema">{{ service.system_type || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Tarifa CFE">{{ service.rate_type || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Fecha de inicio">{{ fmtDate(service.start_date) }}</el-descriptions-item>
-                        <el-descriptions-item label="Fecha de término">{{ fmtDate(service.completion_date) }}</el-descriptions-item>
-                        <el-descriptions-item label="Plan de pago">{{ service.payment_method || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Anticipo">{{ fmtMoney(service.down_payment) }}</el-descriptions-item>
-                        <el-descriptions-item label="Capacidad total">{{ service.total_capacity ? `${service.total_capacity} kW` : '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Paneles">{{ service.number_of_units ? `${service.number_of_units} módulos de ${service.unit_capacity} W` : '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Voltaje">{{ service.voltage || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Número de medidor">{{ service.meter_number || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Dirección de instalación" :span="2">
-                            {{ service.installation_address }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="Contrato">
-                            <template v-if="service.contract">
-                                <el-tag size="small" :type="service.contract.status === 'Firmado' ? 'success' : 'info'">
-                                    {{ service.contract.status }}
-                                </el-tag>
-                                <a
-                                    v-if="service.contract.signed_url"
-                                    :href="service.contract.signed_url"
-                                    target="_blank"
-                                    class="contract-link"
-                                >
-                                    Ver contrato firmado
-                                </a>
-                                <span v-else class="muted"> — aún no firmado</span>
-                            </template>
-                            <span v-else class="muted">No disponible</span>
-                        </el-descriptions-item>
-                        <el-descriptions-item label="Costo total">
-                            <strong>{{ fmtMoney(service.total_amount) }}</strong>
-                        </el-descriptions-item>
-                    </el-descriptions>
+                    <div class="info-scroll">
+                        <el-descriptions :column="2" border size="default" class="info-desc">
+                            <el-descriptions-item label="Cliente">{{ client.name }}</el-descriptions-item>
+                            <el-descriptions-item label="RFC">{{ client.tax_id || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Tipo de sistema">{{ service.system_type || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Tarifa CFE">{{ service.rate_type || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Fecha de inicio">{{ fmtDate(service.start_date) }}</el-descriptions-item>
+                            <el-descriptions-item label="Fecha de término">{{ fmtDate(service.completion_date) }}</el-descriptions-item>
+                            <el-descriptions-item label="Plan de pago">{{ service.payment_method || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Anticipo">{{ fmtMoney(service.down_payment) }}</el-descriptions-item>
+                            <el-descriptions-item label="Capacidad total">{{ service.total_capacity ? `${service.total_capacity} kW` : '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Paneles">{{ service.number_of_units ? `${service.number_of_units} módulos de ${service.unit_capacity} W` : '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Voltaje">{{ service.voltage || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Número de medidor">{{ service.meter_number || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Dirección de instalación" :span="2">
+                                {{ service.installation_address }}
+                            </el-descriptions-item>
+                            <el-descriptions-item label="Contrato">
+                                <template v-if="service.contract">
+                                    <el-tag size="small" :type="service.contract.status === 'Firmado' ? 'success' : 'info'">
+                                        {{ service.contract.status }}
+                                    </el-tag>
+                                    <a
+                                        v-if="service.contract.signed_url"
+                                        :href="service.contract.signed_url"
+                                        target="_blank"
+                                        class="contract-link"
+                                    >
+                                        Ver contrato firmado
+                                    </a>
+                                    <span v-else class="muted"> — aún no firmado</span>
+                                </template>
+                                <span v-else class="muted">No disponible</span>
+                            </el-descriptions-item>
+                            <el-descriptions-item label="Costo total">
+                                <strong>{{ fmtMoney(service.total_amount) }}</strong>
+                            </el-descriptions-item>
+                        </el-descriptions>
+                    </div>
                 </el-tab-pane>
 
                 <el-tab-pane label="Estado de cuenta" name="statement">
@@ -185,12 +266,10 @@ function onAbonoSuccess() {
                         </div>
                     </div>
 
-                    <a :href="route('services.statement', service.id)">
-                        <el-button type="primary" plain>
-                            <el-icon><Download /></el-icon>
-                            Descargar PDF
-                        </el-button>
-                    </a>
+                    <el-button type="primary" plain @click="openStatement">
+                        <el-icon><Download /></el-icon>
+                        Ver estado de cuenta
+                    </el-button>
                 </el-tab-pane>
 
                 <el-tab-pane name="payments">
@@ -200,9 +279,9 @@ function onAbonoSuccess() {
                     </template>
 
                     <div class="payments-actions">
-                        <el-tooltip :disabled="balance > 0" content="No tienes saldo pendiente para abonar" placement="top">
+                        <el-tooltip :disabled="canPay" :content="payBlockedMessage" placement="top">
                             <span>
-                                <el-button type="primary" :disabled="balance <= 0" @click="abonoVisible = true">
+                                <el-button type="primary" :disabled="!canPay" @click="openAbono">
                                     <el-icon><Plus /></el-icon>
                                     Registrar abono
                                 </el-button>
@@ -223,21 +302,22 @@ function onAbonoSuccess() {
                         </el-table-column>
                         <el-table-column prop="method" label="Método" width="120" />
                         <el-table-column prop="reference" label="Referencia" min-width="120" show-overflow-tooltip />
-                        <el-table-column label="Estatus" width="130">
+                        <el-table-column label="Estatus" width="170">
                             <template #default="{ row }">
                                 <el-tag :type="abonoTag(row.status).type" size="small">
                                     {{ abonoTag(row.status).label }}
                                 </el-tag>
-                                <el-tooltip v-if="row.rejection_reason" :content="row.rejection_reason" placement="top">
-                                    <el-icon class="reject-icon" color="#ef4444"><QuestionFilled /></el-icon>
-                                </el-tooltip>
+                                <p v-if="row.rejection_reason" class="reject-reason">
+                                    {{ row.rejection_reason }}
+                                </p>
                             </template>
                         </el-table-column>
                         <el-table-column label="Comprobante" width="110" align="center">
                             <template #default="{ row }">
-                                <a :href="route('media.download', row.receipt_id)" target="_blank">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
                                     <el-button link type="primary" size="small">Ver</el-button>
                                 </a>
+                                <span v-else class="muted">—</span>
                             </template>
                         </el-table-column>
                     </el-table>
@@ -258,9 +338,15 @@ function onAbonoSuccess() {
                         </el-table-column>
                         <el-table-column prop="method" label="Método" width="120" />
                         <el-table-column prop="reference" label="Referencia" min-width="120" show-overflow-tooltip />
+                        <el-table-column prop="notes" label="Notas" min-width="140" show-overflow-tooltip>
+                            <template #default="{ row }">
+                                <span v-if="row.notes">{{ row.notes }}</span>
+                                <span v-else class="muted">—</span>
+                            </template>
+                        </el-table-column>
                         <el-table-column label="Comprobante" width="110" align="center">
                             <template #default="{ row }">
-                                <a v-if="row.receipt_id" :href="route('media.download', row.receipt_id)" target="_blank">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
                                     <el-button link type="primary" size="small">Ver</el-button>
                                 </a>
                                 <span v-else class="muted">—</span>
@@ -275,8 +361,13 @@ function onAbonoSuccess() {
         <AbonoDialog
             v-model:visible="abonoVisible"
             :service-id="service.id"
+            :service-number="service.service_number"
+            :payment-method="service.payment_method"
             :methods="methods"
             :balance="balance"
+            :initial-amount="suggestedAmount"
+            :installment-number="abonoInstallmentNumber"
+            :includes-interest="abonoIncludesInterest"
             @success="onAbonoSuccess"
         />
     </AppLayout>
@@ -330,6 +421,18 @@ function onAbonoSuccess() {
 
 .panel {
     border-radius: 12px;
+}
+
+.info-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.info-scroll .info-desc {
+    min-width: 560px;
 }
 
 .info-desc :deep(.el-descriptions__label) {
@@ -396,10 +499,12 @@ function onAbonoSuccess() {
     margin-left: 6px;
 }
 
-.reject-icon {
-    margin-left: 6px;
-    vertical-align: middle;
-    cursor: help;
+.reject-reason {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #dc2626;
+    line-height: 1.35;
+    white-space: normal;
 }
 
 .muted {

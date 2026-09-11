@@ -5,3 +5,28 @@
 [x-cloak] {
     display: none;
 }
+
+/*
+ * Tablas (Element Plus): mantener SIEMPRE visible la barra de scroll para que
+ * el usuario sepa que hay más contenido (importante en móvil). Element Plus la
+ * oculta con display:none + opacity, por eso se fuerzan ambos.
+ */
+.el-table .el-scrollbar__bar,
+.el-dialog .el-scrollbar__bar {
+    display: block !important;
+    opacity: 1 !important;
+}
+
+.el-table .el-scrollbar__thumb,
+.el-dialog .el-scrollbar__thumb {
+    background-color: #94a3b8 !important;
+}
+
+/* En pantallas táctiles se agranda un poco la barra horizontal. */
+@media (pointer: coarse) {
+    .el-table .el-scrollbar__bar.is-horizontal,
+    .el-dialog .el-scrollbar__bar.is-horizontal {
+        height: 8px !important;
+    }
+}
+

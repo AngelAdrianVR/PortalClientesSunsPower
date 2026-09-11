@@ -1,23 +1,152 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
+import { NO_PLAN_MESSAGE } from '@/utils/plan';
 
 const props = defineProps({
     summary: { type: Object, default: null },
-    recentPayments: { type: Array, default: () => [] },
-    recentAbonos: { type: Array, default: () => [] },
+    payments: { type: Array, default: () => [] },
+    methods: { type: Array, default: () => [] },
 });
 
 const page = usePage();
 const portalClient = computed(() => page.props.portalClient);
 const linked = computed(() => Boolean(portalClient.value));
 
-function abonoTag(status) {
-    if (status === 'Completado') return { type: 'success', label: 'Completado' };
-    if (status === 'Rechazado') return { type: 'danger', label: 'Rechazado' };
-    return { type: 'warning', label: 'En revisión' };
+// Modales del panel general
+const reviewVisible = ref(false);
+const overdueVisible = ref(false);
+
+// Diálogo de pago (registro de abono) desde el propio dashboard
+const payVisible = ref(false);
+const payServiceId = ref(null);
+const payServiceNumber = ref('');
+const payBalance = ref(0);
+const payInitialAmount = ref(null);
+const payInstallmentNumber = ref(null);
+const payPaymentMethod = ref(null);
+const payIncludesInterest = ref(false);
+
+function goToServices() {
+    router.visit(route('services.index'));
+}
+
+function openReview() {
+    reviewVisible.value = true;
+}
+
+function openOverdue() {
+    overdueVisible.value = true;
+}
+
+/** Abre el estado de cuenta en una pestaña nueva (sin AppLayout). */
+function openStatement() {
+    window.open(route('statement.view'), '_blank');
+}
+
+/**
+ * Abre el registro de pago sin salir del dashboard, con el monto de la cuota
+ * pre-cargado (total con interés si está vencida, monto base si no) y editable.
+ */
+function startPayment(row) {
+    if (row.plan_missing) {
+        return;
+    }
+
+    payServiceId.value = row.service_id;
+    payServiceNumber.value = row.service_number || '';
+    payBalance.value = Number(row.service_balance || 0);
+    payInitialAmount.value = row.overdue ? Number(row.total_with_interest) : Number(row.amount);
+    payInstallmentNumber.value = row.installment_number ? Number(row.installment_number) : null;
+    payPaymentMethod.value = row.payment_method || null;
+    payIncludesInterest.value = Number(row.interest || 0) > 0;
+    payVisible.value = true;
+}
+
+/**
+ * Registra un pago por el saldo que la proyección no cubre (plan Personalizado
+ * sin cuotas, o con cuotas que en suma no cubren el saldo pendiente).
+ */
+function startUncoveredPayment(item) {
+    payServiceId.value = item.service_id;
+    payServiceNumber.value = item.service_number || '';
+    payBalance.value = Number(item.service_balance || 0);
+    payInitialAmount.value = Number(item.uncovered_amount || 0);
+    payInstallmentNumber.value = null;
+    payPaymentMethod.value = item.payment_method || null;
+    payIncludesInterest.value = false;
+    payVisible.value = true;
+}
+
+function onPaySuccess() {
+    payVisible.value = false;
+    router.reload({ only: ['summary'], preserveScroll: true });
+}
+
+/** Abonos rechazados recientes (con motivo) que muestra el modal de abonos. */
+const rejectedAbonos = computed(() => props.summary?.rejected_abonos ?? []);
+
+/** Saldo no cubierto por la proyección (plan Personalizado): pago libre. */
+const uncoveredPayments = computed(() => props.summary?.uncovered_payments ?? []);
+
+/** Servicios sin plan de pago: el registro de pagos está bloqueado. */
+const servicesWithoutPlan = computed(() => props.summary?.services_without_plan ?? []);
+
+/** ¿Alguna cuota de la proyección incluye interés moratorio acumulado? */
+const hasInterest = computed(() =>
+    (props.summary?.remaining_payments ?? []).some((row) => Number(row.interest) > 0)
+);
+
+const noPlanMessage = NO_PLAN_MESSAGE;
+
+/**
+ * Reintenta el pago de un abono rechazado: abre el diálogo con el monto original
+ * para subir un comprobante válido.
+ */
+function retryPayment(row) {
+    if (row.plan_missing) {
+        return;
+    }
+
+    reviewVisible.value = false;
+    startPayment({
+        service_id: row.service_id,
+        service_number: row.service_number,
+        service_balance: row.service_balance,
+        payment_method: row.payment_method,
+        installment_number: row.installment_number,
+        amount: row.amount,
+        total_with_interest: row.amount,
+        overdue: false,
+    });
+}
+
+/** Clase por fila para pintar vencidas (rojo) y próximas a vencer (naranja). */
+function payRowClass({ row }) {
+    if (row.overdue) {
+        return 'pay-row-overdue';
+    }
+
+    if (row.near_due) {
+        return 'pay-row-near';
+    }
+
+    return '';
+}
+
+function dueClass(row) {
+    if (row.overdue) {
+        return 'due-overdue';
+    }
+
+    if (row.near_due) {
+        return 'due-near';
+    }
+
+    return '';
 }
 </script>
 
@@ -42,92 +171,334 @@ function abonoTag(status) {
                         <el-icon :size="30" color="#1e3a8a"><Wallet /></el-icon>
                         <div class="stat-value">{{ fmtMoney(summary.total_balance) }}</div>
                         <div class="stat-label">Saldo pendiente</div>
+                        <div v-if="summary.overdue_interest > 0" class="stat-extra">
+                            Interés acumulado sin pagar: {{ fmtMoney(summary.overdue_interest) }}
+                        </div>
                     </div>
                 </el-col>
                 <el-col :xs="24" :sm="12" :lg="6">
-                    <div class="stat-card">
+                    <div class="stat-card is-clickable" role="button" tabindex="0" @click="openReview()" @keyup.enter="openReview()">
                         <el-icon :size="30" color="#eab308"><Clock /></el-icon>
                         <div class="stat-value">{{ summary.pending_review_count }}</div>
                         <div class="stat-label">Abonos en revisión · {{ fmtMoney(summary.pending_review_total) }}</div>
+                        <div v-if="rejectedAbonos.length" class="stat-extra">
+                            {{ rejectedAbonos.length }} abono(s) rechazado(s): revisa el motivo
+                        </div>
+                        <el-icon class="stat-go"><ArrowRight /></el-icon>
                     </div>
                 </el-col>
                 <el-col :xs="24" :sm="12" :lg="6">
-                    <div class="stat-card">
+                    <div class="stat-card is-clickable" role="button" tabindex="0" @click="goToServices" @keyup.enter="goToServices">
                         <el-icon :size="30" color="#1e3a8a"><Grid /></el-icon>
-                        <div class="stat-value">{{ summary.services_count }}</div>
-                        <div class="stat-label">Servicios contratados</div>
+                        <div class="stat-value">{{ fmtMoney(summary.services_total) }}</div>
+                        <div class="stat-label">Total servicios contratados ({{ summary.services_count }})</div>
+                        <el-icon class="stat-go"><ArrowRight /></el-icon>
                     </div>
                 </el-col>
                 <el-col :xs="24" :sm="12" :lg="6">
-                    <div class="stat-card">
+                    <div class="stat-card is-clickable" role="button" tabindex="0" @click="openOverdue()" @keyup.enter="openOverdue()">
                         <el-icon :size="30" color="#ef4444"><Warning /></el-icon>
                         <div class="stat-value">{{ summary.overdue_installments }}</div>
                         <div class="stat-label">Cuotas vencidas · interés {{ fmtMoney(summary.overdue_interest) }}</div>
+                        <el-icon class="stat-go"><ArrowRight /></el-icon>
                     </div>
                 </el-col>
             </el-row>
 
-            <el-row :gutter="16">
-                <el-col :xs="24" :lg="12">
+            <el-row>
+                <el-col :span="24">
                     <el-card shadow="never" class="panel">
                         <template #header>
-                            <div class="panel-header"><span>Próximo vencimiento</span></div>
+                            <div class="panel-header"><span>Pagos proyectados pendientes</span></div>
                         </template>
-                        <div v-if="summary.next_due" class="next-due">
-                            <div class="next-due-label">{{ summary.next_due.label }}</div>
-                            <div class="next-due-date">Vence el {{ fmtDate(summary.next_due.projected_date) }}</div>
-                            <div class="next-due-amount">{{ fmtMoney(summary.next_due.amount) }}</div>
+
+                        <div v-if="summary.remaining_payments.length" class="pay-legend">
+                            <span class="legend-item"><i class="legend-dot legend-dot--red"></i> Vencida</span>
+                            <span class="legend-item"><i class="legend-dot legend-dot--orange"></i> Vence en menos de 7 días</span>
                         </div>
-                        <el-empty v-else description="Sin pagos próximos" :image-size="70" />
-                    </el-card>
-                </el-col>
-                <el-col :xs="24" :lg="12">
-                    <el-card shadow="never" class="panel">
-                        <template #header>
-                            <div class="panel-header"><span>Últimos pagos</span></div>
-                        </template>
-                        <el-table :data="recentPayments" size="small">
-                            <el-table-column label="Fecha" width="110">
-                                <template #default="{ row }">{{ fmtDate(row.payment_date) }}</template>
+
+                        <el-table
+                            v-if="summary.remaining_payments.length"
+                            :data="summary.remaining_payments"
+                            :row-class-name="payRowClass"
+                            size="small"
+                        >
+                            <el-table-column prop="service_number" label="Servicio" show-overflow-tooltip min-width="110" />
+                            <el-table-column prop="label" label="Concepto" show-overflow-tooltip min-width="120" />
+                            <el-table-column label="Vence" width="110">
+                                <template #default="{ row }">
+                                    <span :class="['due-date', dueClass(row)]">{{ fmtDate(row.projected_date) }}</span>
+                                </template>
                             </el-table-column>
-                            <el-table-column prop="service_number" label="Servicio" show-overflow-tooltip />
-                            <el-table-column label="Monto" align="right" width="130">
+                            <el-table-column label="Monto" align="right" width="105">
                                 <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
                             </el-table-column>
-                            <el-table-column label="Comprobante" width="110" align="center">
+                            <el-table-column label="Interés" align="right" width="145">
                                 <template #default="{ row }">
-                                    <a v-if="row.receipt_id" :href="route('media.download', row.receipt_id)" target="_blank">
+                                    <el-tooltip v-if="row.interest_disabled" content="El interés moratorio para este pago está deshabilitado" placement="top">
+                                        <span class="interest-off">
+                                            <el-icon><InfoFilled /></el-icon>
+                                            Deshabilitado
+                                        </span>
+                                    </el-tooltip>
+                                    <template v-else>
+                                        <span :class="{ 'modal-interest': row.interest > 0 }">{{ fmtMoney(row.interest) }}</span>
+                                        <div v-if="row.days_late > 0" class="interest-days">
+                                            {{ row.days_late }} {{ row.days_late === 1 ? 'día' : 'días' }} de atraso
+                                        </div>
+                                    </template>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="Total a pagar" align="right" width="120">
+                                <template #default="{ row }">
+                                    <strong>{{ fmtMoney(row.total_with_interest) }}</strong>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="" align="right" width="160">
+                                <template #default="{ row }">
+                                    <el-tag v-if="row.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                                    <el-tooltip v-else-if="row.plan_missing" :content="noPlanMessage" placement="top">
+                                        <span>
+                                            <el-button type="primary" size="small" disabled>Pagar</el-button>
+                                        </span>
+                                    </el-tooltip>
+                                    <el-button v-else type="primary" size="small" @click="startPayment(row)">
+                                        Pagar
+                                    </el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+
+                        <p v-if="hasInterest" class="pay-interest-note">
+                            El monto total a pagar incluye los cargos de interés moratorio. Para cualquier duda o aclaración al respecto, comunícate con el proveedor.
+                        </p>
+
+                        <!-- Saldo no cubierto por la proyección (plan Personalizado) -->
+                        <div v-if="uncoveredPayments.length" class="extra-pay">
+                            <div class="extra-pay-title">Registrar pago</div>
+                            <p class="extra-pay-note">
+                                Tienes saldo pendiente que no está cubierto por tus pagos proyectados. Puedes registrar un pago por el monto que decidas.
+                            </p>
+                            <div v-for="item in uncoveredPayments" :key="`uncovered-${item.service_id}`" class="extra-pay-row">
+                                <div class="extra-pay-info">
+                                    <span class="extra-pay-service">{{ item.service_number }}</span>
+                                    <span class="extra-pay-amount">
+                                        Saldo por cubrir: <strong>{{ fmtMoney(item.uncovered_amount) }}</strong>
+                                    </span>
+                                </div>
+                                <el-tag v-if="item.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                                <el-button v-else type="primary" size="small" @click="startUncoveredPayment(item)">
+                                    Registrar pago
+                                </el-button>
+                            </div>
+                        </div>
+
+                        <!-- Servicios sin plan de pago asignado por el proveedor -->
+                        <div v-if="servicesWithoutPlan.length" class="extra-pay">
+                            <div class="extra-pay-title">Sin plan de pago</div>
+                            <p class="extra-pay-note">{{ noPlanMessage }}</p>
+                            <div v-for="item in servicesWithoutPlan" :key="`no-plan-${item.service_id}`" class="extra-pay-row">
+                                <div class="extra-pay-info">
+                                    <span class="extra-pay-service">{{ item.service_number }}</span>
+                                    <span class="extra-pay-amount">
+                                        Saldo pendiente: <strong>{{ fmtMoney(item.service_balance) }}</strong>
+                                    </span>
+                                </div>
+                                <el-button type="primary" size="small" disabled>Registrar pago</el-button>
+                            </div>
+                        </div>
+
+                        <el-empty
+                            v-if="!summary.remaining_payments.length && !uncoveredPayments.length && !servicesWithoutPlan.length"
+                            description="No tienes pagos pendientes"
+                            :image-size="70"
+                        />
+                    </el-card>
+                </el-col>
+                <el-col :span="24">
+                    <el-card shadow="never" class="panel">
+                        <template #header>
+                            <div class="panel-header-row">
+                                <span class="panel-title">Historial de pagos</span>
+                                <el-button type="primary" plain size="small" @click="openStatement">
+                                    <el-icon><Download /></el-icon>
+                                    Ver estado de cuenta
+                                </el-button>
+                            </div>
+                        </template>
+                        <el-table :data="payments" size="small">
+                            <el-table-column label="Fecha" width="100">
+                                <template #default="{ row }">{{ fmtDate(row.payment_date) }}</template>
+                            </el-table-column>
+                            <el-table-column prop="service_number" label="Servicio" show-overflow-tooltip min-width="120" />
+                            <el-table-column label="Monto" align="right" width="110">
+                                <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
+                            </el-table-column>
+                            <el-table-column prop="notes" label="Notas" min-width="140" show-overflow-tooltip>
+                                <template #default="{ row }">
+                                    <span v-if="row.notes">{{ row.notes }}</span>
+                                    <span v-else class="muted">—</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="Comprobante" width="105" align="center">
+                                <template #default="{ row }">
+                                    <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
                                         <el-button link type="primary" size="small">Ver</el-button>
                                     </a>
                                     <span v-else class="muted">—</span>
                                 </template>
                             </el-table-column>
                         </el-table>
-                        <el-empty v-if="!recentPayments.length" description="Sin pagos registrados" :image-size="70" />
+                        <el-empty v-if="!payments.length" description="Sin pagos registrados" :image-size="70" />
                     </el-card>
                 </el-col>
             </el-row>
 
-            <el-card shadow="never" class="panel">
-                <template #header>
-                    <div class="panel-header"><span>Mis abonos recientes</span></div>
-                </template>
-                <el-table :data="recentAbonos" size="small">
-                    <el-table-column label="Fecha" width="110">
+            <!-- Modal: abonos en revisión / rechazados -->
+            <el-dialog v-model="reviewVisible" title="Abonos en revisión y rechazados" width="min(760px, 95vw)">
+                <p v-if="summary.pending_review_abonos.length" class="modal-note">
+                    Tus abonos están en revisión; se aplicarán a tu saldo cuando la empresa valide el comprobante.
+                </p>
+                <el-table v-if="summary.pending_review_abonos.length" :data="summary.pending_review_abonos" size="small">
+                    <el-table-column label="Fecha pago" width="105">
                         <template #default="{ row }">{{ fmtDate(row.payment_date) }}</template>
                     </el-table-column>
                     <el-table-column prop="service_number" label="Servicio" show-overflow-tooltip />
-                    <el-table-column label="Monto" align="right" width="130">
+                    <el-table-column label="Monto" align="right" width="115">
                         <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
                     </el-table-column>
-                    <el-table-column label="Estatus" width="140" align="center">
+                    <el-table-column prop="method" label="Método" width="120" />
+                    <el-table-column label="Comprobante" width="105" align="center">
                         <template #default="{ row }">
-                            <el-tag :type="abonoTag(row.status).type" size="small">{{ abonoTag(row.status).label }}</el-tag>
+                            <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
+                                <el-button link type="primary" size="small">Ver</el-button>
+                            </a>
+                            <span v-else class="muted">—</span>
                         </template>
                     </el-table-column>
                 </el-table>
-                <el-empty v-if="!recentAbonos.length" description="Aún no registras abonos" :image-size="70" />
-            </el-card>
+
+                <template v-if="rejectedAbonos.length">
+                    <h4 class="modal-subtitle">Rechazados</h4>
+                    <p class="modal-note">
+                        Estos abonos no fueron validados. Registra de nuevo el pago con un comprobante válido.
+                    </p>
+                    <el-table :data="rejectedAbonos" size="small">
+                        <el-table-column label="Fecha pago" width="105">
+                            <template #default="{ row }">{{ fmtDate(row.payment_date) }}</template>
+                        </el-table-column>
+                        <el-table-column prop="service_number" label="Servicio" min-width="100" show-overflow-tooltip />
+                        <el-table-column label="Monto" align="right" width="105">
+                            <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
+                        </el-table-column>
+                        <el-table-column label="Estatus" width="105">
+                            <template #default>
+                                <el-tag type="danger" size="small">Rechazado</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Motivo" min-width="150" show-overflow-tooltip>
+                            <template #default="{ row }">
+                                <span class="reject-reason">{{ row.rejection_reason || '—' }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Comprobante" width="105" align="center">
+                            <template #default="{ row }">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
+                                    <el-button link type="primary" size="small">Ver</el-button>
+                                </a>
+                                <span v-else class="muted">—</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="" align="center" width="110">
+                            <template #default="{ row }">
+                                <el-tooltip
+                                    :disabled="row.service_balance > 0 && !row.plan_missing"
+                                    :content="row.plan_missing ? noPlanMessage : 'No tienes saldo pendiente para abonar'"
+                                    placement="top"
+                                >
+                                    <span>
+                                        <el-button
+                                            type="primary"
+                                            size="small"
+                                            :disabled="row.service_balance <= 0 || row.plan_missing"
+                                            @click="retryPayment(row)"
+                                        >
+                                            Reintentar
+                                        </el-button>
+                                    </span>
+                                </el-tooltip>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </template>
+
+                <el-empty v-if="!summary.pending_review_abonos.length && !rejectedAbonos.length" description="No tienes abonos en revisión ni rechazados" :image-size="70" />
+                <template #footer>
+                    <el-button @click="reviewVisible = false">Cerrar</el-button>
+                </template>
+            </el-dialog>
+
+            <!-- Modal: cuotas vencidas -->
+            <el-dialog v-model="overdueVisible" title="Cuotas vencidas" width="min(760px, 95vw)">
+                <p v-if="summary.overdue_dues.length" class="modal-note">
+                    Estas cuotas ya acumulan interés moratorio (10 % mensual). Realiza tu pago para detener el recargo.
+                </p>
+                <el-table v-if="summary.overdue_dues.length" :data="summary.overdue_dues" size="small">
+                    <el-table-column prop="service_number" label="Servicio" show-overflow-tooltip min-width="110" />
+                    <el-table-column prop="label" label="Concepto" show-overflow-tooltip min-width="120" />
+                    <el-table-column label="Vence" width="100">
+                        <template #default="{ row }">{{ fmtDate(row.projected_date) }}</template>
+                    </el-table-column>
+                    <el-table-column label="Monto" align="right" width="105">
+                        <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
+                    </el-table-column>
+                    <el-table-column label="Interés" align="right" width="120">
+                        <template #default="{ row }">
+                            <el-tooltip v-if="row.interest_disabled" content="El interés moratorio para este pago está deshabilitado" placement="top">
+                                <span class="interest-off">
+                                    <el-icon><InfoFilled /></el-icon>
+                                    Deshabilitado
+                                </span>
+                            </el-tooltip>
+                            <span v-else :class="{ 'modal-interest': row.interest > 0 }">{{ fmtMoney(row.interest) }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="Total" align="right" width="110">
+                        <template #default="{ row }"><strong>{{ fmtMoney(row.total_with_interest) }}</strong></template>
+                    </el-table-column>
+                    <el-table-column label="" align="center" width="160">
+                        <template #default="{ row }">
+                            <el-tag v-if="row.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                            <el-tooltip v-else-if="row.plan_missing" :content="noPlanMessage" placement="top">
+                                <span>
+                                    <el-button type="primary" size="small" disabled>Pagar</el-button>
+                                </span>
+                            </el-tooltip>
+                            <el-button v-else type="primary" size="small" @click="startPayment(row)">
+                                Pagar
+                            </el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+                <el-empty v-else description="No tienes cuotas vencidas" :image-size="70" />
+                <template #footer>
+                    <el-button @click="overdueVisible = false">Cerrar</el-button>
+                </template>
+            </el-dialog>
+
+            <!-- Registro de pago (componente reutilizable) desde el dashboard -->
+            <AbonoDialog
+                v-model:visible="payVisible"
+                :service-id="payServiceId"
+                :service-number="payServiceNumber"
+                :payment-method="payPaymentMethod"
+                :methods="methods"
+                :balance="payBalance"
+                :initial-amount="payInitialAmount"
+                :installment-number="payInstallmentNumber"
+                :includes-interest="payIncludesInterest"
+                @success="onPaySuccess"
+            />
         </template>
 
         <el-result
@@ -207,6 +578,13 @@ function abonoTag(status) {
     color: #64748b;
 }
 
+.stat-extra {
+    font-size: 12px;
+    font-weight: 600;
+    color: #b91c1c;
+    margin-top: 2px;
+}
+
 .panel {
     border-radius: 12px;
     margin-bottom: 16px;
@@ -217,26 +595,195 @@ function abonoTag(status) {
     color: #1e3a8a;
 }
 
-.next-due {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+.stat-card.is-clickable {
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.next-due-label {
-    font-weight: 600;
-    color: #0f172a;
+.stat-card.is-clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 24px -14px rgba(30, 58, 138, 0.35);
+    border-color: #dbeafe;
 }
 
-.next-due-date {
+.stat-card.is-clickable:focus-visible {
+    outline: 2px solid #facc15;
+    outline-offset: 2px;
+}
+
+.stat-go {
+    position: absolute;
+    top: 16px;
+    right: 14px;
+    color: #cbd5e1;
+}
+
+.stat-card.is-clickable:hover .stat-go {
+    color: #facc15;
+}
+
+.modal-note {
+    margin: 0 0 12px;
     color: #64748b;
     font-size: 13px;
 }
 
-.next-due-amount {
-    font-size: 20px;
+.modal-subtitle {
+    margin: 18px 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #b91c1c;
+}
+
+.reject-reason {
+    color: #dc2626;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.modal-interest {
+    color: #b91c1c;
+    font-weight: 600;
+}
+
+.pay-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.legend-dot--red {
+    background: #dc2626;
+}
+
+.legend-dot--orange {
+    background: #f59e0b;
+}
+
+.due-overdue {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.due-near {
+    color: #ea580c;
+    font-weight: 600;
+}
+
+.panel :deep(.el-table .pay-row-overdue > td.el-table__cell) {
+    background-color: #fef2f2 !important;
+}
+
+.panel :deep(.el-table .pay-row-near > td.el-table__cell) {
+    background-color: #fffbeb !important;
+}
+
+.panel-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.panel-title {
     font-weight: 700;
     color: #1e3a8a;
+}
+
+.extra-pay {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #eef0f3;
+}
+
+.extra-pay-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e3a8a;
+    margin-bottom: 4px;
+}
+
+.extra-pay-note {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.extra-pay-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+}
+
+.extra-pay-row + .extra-pay-row {
+    border-top: 1px dashed #eef0f3;
+}
+
+.extra-pay-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.extra-pay-service {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.extra-pay-amount {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.extra-pay-amount strong {
+    color: #1e3a8a;
+}
+
+.interest-days {
+    font-size: 11px;
+    line-height: 1.3;
+    color: #b45309;
+}
+
+.interest-off {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #b45309;
+}
+
+.interest-off .el-icon {
+    color: #f59e0b;
+}
+
+.pay-interest-note {
+    margin: 10px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #b45309;
 }
 
 .muted {

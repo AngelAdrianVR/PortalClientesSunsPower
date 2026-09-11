@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Estado de Cuenta · Sun's Power MX</title>
+    <title>Estado de Cuenta general · Sun's Power MX</title>
     <style>
         * { font-family: 'DejaVu Sans', sans-serif; font-size: 11px; color: #1f2937; }
         body { margin: 0; padding: 20px; }
@@ -21,12 +21,8 @@
         .box { border: 1px solid #dbe3f5; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
         .box h3 { margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .4px;
                   color: #1e3a8a; border-left: 4px solid #facc15; padding-left: 6px; }
-        .totals { width: 55%; margin-left: auto; }
-        .totals td { border: none; padding: 3px 8px; }
-        .totals .label { color: #4b5563; }
-        .totals .grand { font-weight: bold; border-top: 2px solid #1e3a8a; }
-        .totals .grand .right { color: #1e3a8a; }
-        .interest-line .right { color: #b91c1c; }
+        .service-divider { margin: 14px 0 10px; font-size: 12px; font-weight: bold; color: #1e3a8a;
+                           border-bottom: 2px solid #facc15; padding-bottom: 4px; }
         .status-paid { color: #15803d; }
         .status-due { color: #ea580c; }
         .status-overdue { color: #b91c1c; }
@@ -49,7 +45,7 @@
             <td class="doc-title">
                 <h1>Estado de Cuenta</h1>
                 <div>Generado: {{ $generatedAt->format('d/m/Y H:i') }}</div>
-                <div>Servicio: {{ $payload['service_number'] }}</div>
+                <div>Todos los servicios</div>
             </td>
         </tr>
     </table>
@@ -70,7 +66,12 @@
         </table>
     </div>
 
-    @include('pdf._servicio', ['payload' => $payload])
+    @foreach ($services as $service)
+        <div @if (! $loop->first) class="page-break" @endif>
+            <div class="service-divider">Servicio: {{ $service['service_number'] }}</div>
+            @include('pdf._servicio', ['payload' => $service])
+        </div>
+    @endforeach
 
     <div class="footer">
         Interés moratorio: 10% mensual sobre saldos vencidos con 5 días de gracia. Documento informativo generado desde el portal de clientes.

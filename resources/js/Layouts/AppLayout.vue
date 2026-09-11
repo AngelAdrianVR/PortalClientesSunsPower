@@ -71,7 +71,8 @@ const initials = computed(() => {
                     <h1 class="portal-title">{{ title }}</h1>
                 </div>
 
-                <el-dropdown v-if="portalClient" trigger="click">
+                <!-- En móvil el acceso al usuario/cierre de sesión vive en el SideNav (pie del drawer) -->
+                <el-dropdown v-if="portalClient && !isMobile" trigger="click">
                     <div class="portal-user">
                         <el-avatar :size="34" class="portal-avatar">{{ initials }}</el-avatar>
                         <span class="portal-user-name">{{ portalClient.name }}</span>
