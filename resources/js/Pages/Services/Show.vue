@@ -23,6 +23,11 @@ const payQuery = new URLSearchParams(window.location.search);
 const abonoVisible = ref(payQuery.get('pagar') === '1');
 const suggestedAmount = ref(null);
 
+/** Próxima cuota pendiente de la proyección (la primera sin pago). */
+function nextPendingInstallment() {
+    return props.installments.find((i) => !['paid', 'on_time'].includes(i.status)) || null;
+}
+
 /**
  * Monto fijo de la próxima cuota pendiente cuando el plan es de mensualidades
  * fijas (3/6/9/12 MSI): total con interés si la cuota está vencida, monto base si no.
@@ -32,7 +37,7 @@ function fixedPlanSuggestedAmount() {
         return null;
     }
 
-    const pending = props.installments.find((i) => !['paid', 'on_time'].includes(i.status));
+    const pending = nextPendingInstallment();
 
     if (!pending) {
         return null;
@@ -43,8 +48,15 @@ function fixedPlanSuggestedAmount() {
 
 suggestedAmount.value = Number(payQuery.get('monto')) > 0 ? Number(payQuery.get('monto')) : fixedPlanSuggestedAmount();
 
+/**
+ * Cuota de la proyección a la que se aplicará el abono: el ERP la usa al validar
+ * para vincular el pago a la mensualidad correspondiente (nota "Pago N").
+ */
+const abonoInstallmentNumber = ref(nextPendingInstallment()?.installment_number ?? null);
+
 function openAbono() {
     suggestedAmount.value = fixedPlanSuggestedAmount();
+    abonoInstallmentNumber.value = nextPendingInstallment()?.installment_number ?? null;
     abonoVisible.value = true;
 }
 
@@ -254,14 +266,14 @@ function openStatement() {
                         </el-table-column>
                         <el-table-column prop="method" label="Método" width="120" />
                         <el-table-column prop="reference" label="Referencia" min-width="120" show-overflow-tooltip />
-                        <el-table-column label="Estatus" width="130">
+                        <el-table-column label="Estatus" width="170">
                             <template #default="{ row }">
                                 <el-tag :type="abonoTag(row.status).type" size="small">
                                     {{ abonoTag(row.status).label }}
                                 </el-tag>
-                                <el-tooltip v-if="row.rejection_reason" :content="row.rejection_reason" placement="top">
-                                    <el-icon class="reject-icon" color="#ef4444"><QuestionFilled /></el-icon>
-                                </el-tooltip>
+                                <p v-if="row.rejection_reason" class="reject-reason">
+                                    {{ row.rejection_reason }}
+                                </p>
                             </template>
                         </el-table-column>
                         <el-table-column label="Comprobante" width="110" align="center">
@@ -318,6 +330,7 @@ function openStatement() {
             :methods="methods"
             :balance="balance"
             :initial-amount="suggestedAmount"
+            :installment-number="abonoInstallmentNumber"
             @success="onAbonoSuccess"
         />
     </AppLayout>
@@ -437,10 +450,12 @@ function openStatement() {
     margin-left: 6px;
 }
 
-.reject-icon {
-    margin-left: 6px;
-    vertical-align: middle;
-    cursor: help;
+.reject-reason {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #dc2626;
+    line-height: 1.35;
+    white-space: normal;
 }
 
 .muted {

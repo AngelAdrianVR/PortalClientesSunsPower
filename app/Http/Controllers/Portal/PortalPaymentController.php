@@ -23,6 +23,8 @@ class PortalPaymentController extends Controller
 
         $validated = $request->validate([
             'service_order_id' => ['required', 'integer'],
+            // Cuota de la proyección que el cliente eligió pagar (si viene de una fila de "Pagos restantes").
+            'installment_number' => ['nullable', 'integer', 'min:1'],
             'amount' => ['required', 'numeric', 'min:1', 'max:9999999'],
             'payment_date' => ['required', 'date', 'before_or_equal:today'],
             'method' => ['required', 'in:'.implode(',', PortalPayment::METHODS)],
@@ -46,6 +48,7 @@ class PortalPaymentController extends Controller
         $portalPayment = $client->portalPayments()->create([
             'branch_id' => $client->branch_id,
             'service_order_id' => $serviceOrder->id,
+            'installment_number' => $validated['installment_number'] ?? null,
             'amount' => $validated['amount'],
             'payment_date' => $validated['payment_date'],
             'method' => $validated['method'],

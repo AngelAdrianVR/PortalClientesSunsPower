@@ -25,6 +25,7 @@ const payServiceId = ref(null);
 const payServiceNumber = ref('');
 const payBalance = ref(0);
 const payInitialAmount = ref(null);
+const payInstallmentNumber = ref(null);
 const payPaymentMethod = ref(null);
 
 function goToServices() {
@@ -53,6 +54,7 @@ function startPayment(row) {
     payServiceNumber.value = row.service_number || '';
     payBalance.value = Number(row.service_balance || 0);
     payInitialAmount.value = row.overdue ? Number(row.total_with_interest) : Number(row.amount);
+    payInstallmentNumber.value = row.installment_number ? Number(row.installment_number) : null;
     payPaymentMethod.value = row.payment_method || null;
     payVisible.value = true;
 }
@@ -60,6 +62,27 @@ function startPayment(row) {
 function onPaySuccess() {
     payVisible.value = false;
     router.reload({ only: ['summary'], preserveScroll: true });
+}
+
+/** Abonos rechazados recientes (con motivo) que muestra el modal de abonos. */
+const rejectedAbonos = computed(() => props.summary?.rejected_abonos ?? []);
+
+/**
+ * Reintenta el pago de un abono rechazado: abre el diálogo con el monto original
+ * para subir un comprobante válido.
+ */
+function retryPayment(row) {
+    reviewVisible.value = false;
+    startPayment({
+        service_id: row.service_id,
+        service_number: row.service_number,
+        service_balance: row.service_balance,
+        payment_method: row.payment_method,
+        installment_number: row.installment_number,
+        amount: row.amount,
+        total_with_interest: row.amount,
+        overdue: false,
+    });
 }
 
 /** Clase por fila para pintar vencidas (rojo) y próximas a vencer (naranja). */
@@ -119,6 +142,9 @@ function dueClass(row) {
                         <el-icon :size="30" color="#eab308"><Clock /></el-icon>
                         <div class="stat-value">{{ summary.pending_review_count }}</div>
                         <div class="stat-label">Abonos en revisión · {{ fmtMoney(summary.pending_review_total) }}</div>
+                        <div v-if="rejectedAbonos.length" class="stat-extra">
+                            {{ rejectedAbonos.length }} abono(s) rechazado(s): revisa el motivo
+                        </div>
                         <el-icon class="stat-go"><ArrowRight /></el-icon>
                     </div>
                 </el-col>
@@ -168,11 +194,12 @@ function dueClass(row) {
                             <el-table-column label="Total a pagar" align="right" width="120">
                                 <template #default="{ row }">{{ fmtMoney(row.total_with_interest) }}</template>
                             </el-table-column>
-                            <el-table-column label="" align="right" width="96">
+                            <el-table-column label="" align="right" width="160">
                                 <template #default="{ row }">
-                                    <el-button type="primary" size="small" @click="startPayment(row)">
+                                    <el-button v-if="!row.pending_review" type="primary" size="small" @click="startPayment(row)">
                                         Pagar
                                     </el-button>
+                                    <el-tag v-else type="warning" size="small">Pendiente de revisión</el-tag>
                                 </template>
                             </el-table-column>
                         </el-table>
@@ -218,8 +245,8 @@ function dueClass(row) {
                 </el-col>
             </el-row>
 
-            <!-- Modal: abonos en revisión -->
-            <el-dialog v-model="reviewVisible" title="Abonos en revisión" width="min(680px, 95vw)">
+            <!-- Modal: abonos en revisión / rechazados -->
+            <el-dialog v-model="reviewVisible" title="Abonos en revisión y rechazados" width="min(760px, 95vw)">
                 <p v-if="summary.pending_review_abonos.length" class="modal-note">
                     Tus abonos están en revisión; se aplicarán a tu saldo cuando la empresa valide el comprobante.
                 </p>
@@ -241,7 +268,53 @@ function dueClass(row) {
                         </template>
                     </el-table-column>
                 </el-table>
-                <el-empty v-else description="No tienes abonos en revisión" :image-size="70" />
+
+                <template v-if="rejectedAbonos.length">
+                    <h4 class="modal-subtitle">Rechazados</h4>
+                    <p class="modal-note">
+                        Estos abonos no fueron validados. Registra de nuevo el pago con un comprobante válido.
+                    </p>
+                    <el-table :data="rejectedAbonos" size="small">
+                        <el-table-column label="Fecha pago" width="105">
+                            <template #default="{ row }">{{ fmtDate(row.payment_date) }}</template>
+                        </el-table-column>
+                        <el-table-column prop="service_number" label="Servicio" min-width="100" show-overflow-tooltip />
+                        <el-table-column label="Monto" align="right" width="105">
+                            <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
+                        </el-table-column>
+                        <el-table-column label="Estatus" width="105">
+                            <template #default>
+                                <el-tag type="danger" size="small">Rechazado</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Motivo" min-width="150" show-overflow-tooltip>
+                            <template #default="{ row }">
+                                <span class="reject-reason">{{ row.rejection_reason || '—' }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="Comprobante" width="105" align="center">
+                            <template #default="{ row }">
+                                <a v-if="row.receipt_url" :href="row.receipt_url" target="_blank" rel="noopener">
+                                    <el-button link type="primary" size="small">Ver</el-button>
+                                </a>
+                                <span v-else class="muted">—</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="" align="center" width="110">
+                            <template #default="{ row }">
+                                <el-tooltip :disabled="row.service_balance > 0" content="No tienes saldo pendiente para abonar" placement="top">
+                                    <span>
+                                        <el-button type="primary" size="small" :disabled="row.service_balance <= 0" @click="retryPayment(row)">
+                                            Reintentar
+                                        </el-button>
+                                    </span>
+                                </el-tooltip>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </template>
+
+                <el-empty v-if="!summary.pending_review_abonos.length && !rejectedAbonos.length" description="No tienes abonos en revisión ni rechazados" :image-size="70" />
                 <template #footer>
                     <el-button @click="reviewVisible = false">Cerrar</el-button>
                 </template>
@@ -269,11 +342,12 @@ function dueClass(row) {
                     <el-table-column label="Total" align="right" width="110">
                         <template #default="{ row }"><strong>{{ fmtMoney(row.total_with_interest) }}</strong></template>
                     </el-table-column>
-                    <el-table-column label="" align="center" width="100">
+                    <el-table-column label="" align="center" width="160">
                         <template #default="{ row }">
-                            <el-button type="primary" size="small" @click="startPayment(row)">
+                            <el-button v-if="!row.pending_review" type="primary" size="small" @click="startPayment(row)">
                                 Pagar
                             </el-button>
+                            <el-tag v-else type="warning" size="small">Pendiente de revisión</el-tag>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -292,6 +366,7 @@ function dueClass(row) {
                 :methods="methods"
                 :balance="payBalance"
                 :initial-amount="payInitialAmount"
+                :installment-number="payInstallmentNumber"
                 @success="onPaySuccess"
             />
         </template>
@@ -422,6 +497,19 @@ function dueClass(row) {
     margin: 0 0 12px;
     color: #64748b;
     font-size: 13px;
+}
+
+.modal-subtitle {
+    margin: 18px 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #b91c1c;
+}
+
+.reject-reason {
+    color: #dc2626;
+    font-size: 12px;
+    line-height: 1.35;
 }
 
 .modal-interest {

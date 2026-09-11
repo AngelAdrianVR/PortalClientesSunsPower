@@ -25,6 +25,8 @@ const props = defineProps({
     initialAmount: { type: Number, default: null },
     /** Plan de pago del servicio (p. ej. "6 MSI", "Personalizado" o vacío). */
     paymentMethod: { type: String, default: null },
+    /** Cuota de la proyección que se está pagando (para vincularla al validar en el ERP). */
+    installmentNumber: { type: Number, default: null },
 });
 
 const emit = defineEmits(['update:visible', 'success']);
@@ -42,6 +44,7 @@ const fileList = ref([]);
 
 const form = useForm({
     service_order_id: props.serviceId,
+    installment_number: props.installmentNumber,
     amount: null,
     payment_date: today(),
     method: props.methods?.[0] || 'Transferencia',
@@ -64,6 +67,7 @@ function resetState() {
     form.clearErrors();
     form.reset('amount', 'reference', 'notes', 'proof');
     form.service_order_id = props.serviceId;
+    form.installment_number = props.installmentNumber;
     form.payment_date = today();
     form.method = props.methods?.[0] || 'Transferencia';
     currentStep.value = 1;

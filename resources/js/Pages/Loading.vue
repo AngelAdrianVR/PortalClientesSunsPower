@@ -55,12 +55,15 @@ onMounted(() => {
             </div>
 
             <!-- Texto de la Marca con Efecto de Revelado -->
-            <div class="text-center overflow-hidden h-16 flex items-center">
+            <div class="text-center overflow-hidden h-20 flex items-center">
                 <h1 
                     class="text-3xl md:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-800 to-blue-600 transition-all duration-1000 transform"
                     :class="showText ? 'translate-y-0 opacity-100 filter blur-0' : 'translate-y-10 opacity-0 filter blur-sm'"
                 >
                     SUN'S POWER <span class="text-yellow-500">MX</span>
+                    <p class="text-lg md:text-xl font-light text-gray-400 mt-2">
+                        Portal de clientes
+                    </p>
                 </h1>
             </div>
 

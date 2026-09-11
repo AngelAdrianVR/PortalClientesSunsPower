@@ -33,6 +33,8 @@ class PortalPayment extends Model implements HasMedia
         'branch_id',
         'client_id',
         'service_order_id',
+        // Cuota de la proyección (payment_installments) que el cliente eligió pagar.
+        'installment_number',
         'amount',
         'payment_date',
         'method',
@@ -50,6 +52,7 @@ class PortalPayment extends Model implements HasMedia
             'amount' => 'decimal:2',
             'payment_date' => 'date',
             'validated_at' => 'datetime',
+            'installment_number' => 'integer',
         ];
     }
 

@@ -100,8 +100,44 @@ class PortfolioService
             ->latest()
             ->get();
 
+        // Cuotas con un abono "En revisión" del portal: la fila se muestra como
+        // "Pendiente de revisión" en lugar de habilitar otro pago de la misma
+        // mensualidad (el abono aún no descuenta saldo hasta ser validado).
+        $pendingKeys = [];
+        $legacyAmounts = [];
+
+        foreach ($inReview as $p) {
+            if ($p->installment_number) {
+                $pendingKeys[$p->service_order_id.':'.$p->installment_number] = true;
+            } else {
+                // Abonos capturados antes de guardar la cuota: se asocian por monto
+                // a la primera cuota impaga que coincida (sin marcar las demás).
+                $legacyAmounts[$p->service_order_id][] = round((float) $p->amount, 2);
+            }
+        }
+
+        foreach ($installments as $i) {
+            foreach ($legacyAmounts[$i->service_order_id] ?? [] as $index => $amount) {
+                if (abs(round((float) $i->amount, 2) - $amount) < 0.01
+                    || abs($i->total_with_interest - $amount) < 0.01) {
+                    $pendingKeys[$i->service_order_id.':'.$i->installment_number] = true;
+                    unset($legacyAmounts[$i->service_order_id][$index]);
+                    break;
+                }
+            }
+        }
+
+        // Abonos rechazados recientes (con motivo): el cliente ve por qué no
+        // fueron validados y puede reintentar con un comprobante válido.
+        $rejected = $client->portalPayments()
+            ->with(['serviceOrder', 'media'])
+            ->where('status', PortalPayment::STATUS_REJECTED)
+            ->latest('id')
+            ->limit(10)
+            ->get();
+
         // Convierte una cuota impaga en la fila del panel "Pagos restantes".
-        $mapRemaining = function (PaymentInstallment $i) use ($serviceMeta, $balances): array {
+        $mapRemaining = function (PaymentInstallment $i) use ($serviceMeta, $balances, $pendingKeys): array {
             $meta = $serviceMeta[$i->service_order_id] ?? ['service_number' => 'Orden #'.$i->service_order_id];
             $overdue = $i->days_late > 0;
 
@@ -118,6 +154,8 @@ class PortfolioService
                 'total_with_interest' => $i->total_with_interest,
                 'days_late' => $i->days_late,
                 'overdue' => $overdue,
+                // Ya existe un abono del portal esperando validación en el ERP.
+                'pending_review' => isset($pendingKeys[$i->service_order_id.':'.$i->installment_number]),
                 // Próxima a vencer con una semana de anticipación (incluye las que
                 // aún están dentro de los días de gracia sin generar recargo).
                 'near_due' => ! $overdue && $i->projected_date->lte(now()->addDays(7)->startOfDay()),
@@ -156,6 +194,25 @@ class PortfolioService
                     'method' => $p->method,
                     'reference' => $p->reference,
                     'service_number' => $meta['service_number'] ?? ($p->serviceOrder?->service_number ?? 'Orden #'.$p->service_order_id),
+                    'receipt_url' => ReceiptService::url($p->getFirstMedia('receipts')),
+                ];
+            })->all(),
+            // Rechazados: motivo visible y datos para volver a pagar.
+            'rejected_abonos' => $rejected->map(function (PortalPayment $p) use ($serviceMeta, $balances): array {
+                $meta = $serviceMeta[$p->service_order_id] ?? null;
+
+                return [
+                    'id' => $p->id,
+                    'service_id' => $p->service_order_id,
+                    'service_number' => $meta['service_number'] ?? ($p->serviceOrder?->service_number ?? 'Orden #'.$p->service_order_id),
+                    'installment_number' => $p->installment_number,
+                    'service_balance' => $balances[$p->service_order_id] ?? 0.0,
+                    'payment_method' => $meta['payment_method'] ?? null,
+                    'payment_date' => $p->payment_date?->format('Y-m-d'),
+                    'amount' => round((float) $p->amount, 2),
+                    'method' => $p->method,
+                    'rejection_reason' => $p->rejection_reason,
+                    'validated_at' => $p->validated_at?->format('Y-m-d H:i'),
                     'receipt_url' => ReceiptService::url($p->getFirstMedia('receipts')),
                 ];
             })->all(),
