@@ -28,7 +28,7 @@ const submit = () => {
         <div class="text-center mb-7">
             <h2 class="text-2xl font-bold text-gray-800">Portal de Clientes</h2>
             <p class="text-sm text-gray-500 mt-1 leading-relaxed">
-                Ingresa con el correo, RFC, nombre o teléfono con los que fuiste registrado como cliente.
+                Ingresa con el correo, RFC, nombre completo o teléfono con los que fuiste registrado como cliente.
             </p>
         </div>
 
@@ -38,7 +38,7 @@ const submit = () => {
 
         <form @submit.prevent="submit">
             <label class="block text-sm font-medium text-gray-700 mb-1.5" for="email">
-                Correo, RFC, nombre o teléfono
+                Correo, RFC, nombre completo o teléfono
             </label>
 
             <el-input

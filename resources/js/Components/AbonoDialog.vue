@@ -27,6 +27,8 @@ const props = defineProps({
     paymentMethod: { type: String, default: null },
     /** Cuota de la proyección que se está pagando (para vincularla al validar en el ERP). */
     installmentNumber: { type: Number, default: null },
+    /** ¿El monto a pagar incluye interés moratorio? (muestra la nota aclaratoria). */
+    includesInterest: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:visible', 'success']);
@@ -61,6 +63,27 @@ function today() {
     const day = String(d.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;
+}
+
+/**
+ * Muestra el monto con separador de miles (p. ej. 29,550.50).
+ * Se conservan los decimales capturados tal cual para no romper la escritura
+ * (el-input-number vuelve a aplicar el formatter en cada tecla).
+ */
+function formatAmount(value) {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const [integer, decimals] = String(value).split('.');
+    const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    return decimals === undefined ? grouped : `${grouped}.${decimals}`;
+}
+
+/** Quita los separadores de miles para que el input-number reciba un número válido. */
+function parseAmount(value) {
+    return String(value ?? '').replace(/,/g, '');
 }
 
 function resetState() {
@@ -222,6 +245,8 @@ function submit() {
                         :step="100"
                         :controls-position="'right'"
                         :disabled="amountLocked"
+                        :formatter="formatAmount"
+                        :parser="parseAmount"
                         style="width: 100%"
                         placeholder="0.00"
                     />
@@ -237,6 +262,9 @@ function submit() {
                             Monto sugerido para esta cuota: {{ fmtMoney(initialAmount) }} (puedes ajustarlo).
                         </template>
                         <template v-else>Indica cuánto vas a abonar a este servicio.</template>
+                    </div>
+                    <div v-if="includesInterest" class="interest-note">
+                        El monto total a pagar incluye los cargos de interés moratorio. Para cualquier duda o aclaración al respecto, comunícate con el proveedor.
                     </div>
                 </el-form-item>
 
@@ -337,6 +365,17 @@ function submit() {
     vertical-align: -2px;
     margin-right: 4px;
     color: #64748b;
+}
+
+.interest-note {
+    margin-top: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #b45309;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
 }
 
 .review-alert {

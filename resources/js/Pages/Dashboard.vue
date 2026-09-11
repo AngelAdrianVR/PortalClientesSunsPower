@@ -28,6 +28,7 @@ const payBalance = ref(0);
 const payInitialAmount = ref(null);
 const payInstallmentNumber = ref(null);
 const payPaymentMethod = ref(null);
+const payIncludesInterest = ref(false);
 
 function goToServices() {
     router.visit(route('services.index'));
@@ -61,6 +62,7 @@ function startPayment(row) {
     payInitialAmount.value = row.overdue ? Number(row.total_with_interest) : Number(row.amount);
     payInstallmentNumber.value = row.installment_number ? Number(row.installment_number) : null;
     payPaymentMethod.value = row.payment_method || null;
+    payIncludesInterest.value = Number(row.interest || 0) > 0;
     payVisible.value = true;
 }
 
@@ -75,6 +77,7 @@ function startUncoveredPayment(item) {
     payInitialAmount.value = Number(item.uncovered_amount || 0);
     payInstallmentNumber.value = null;
     payPaymentMethod.value = item.payment_method || null;
+    payIncludesInterest.value = false;
     payVisible.value = true;
 }
 
@@ -91,6 +94,11 @@ const uncoveredPayments = computed(() => props.summary?.uncovered_payments ?? []
 
 /** Servicios sin plan de pago: el registro de pagos está bloqueado. */
 const servicesWithoutPlan = computed(() => props.summary?.services_without_plan ?? []);
+
+/** ¿Alguna cuota de la proyección incluye interés moratorio acumulado? */
+const hasInterest = computed(() =>
+    (props.summary?.remaining_payments ?? []).some((row) => Number(row.interest) > 0)
+);
 
 const noPlanMessage = NO_PLAN_MESSAGE;
 
@@ -197,8 +205,8 @@ function dueClass(row) {
                 </el-col>
             </el-row>
 
-            <el-row :gutter="16">
-                <el-col :xs="24" :lg="12">
+            <el-row>
+                <el-col :span="24">
                     <el-card shadow="never" class="panel">
                         <template #header>
                             <div class="panel-header"><span>Pagos proyectados pendientes</span></div>
@@ -222,8 +230,29 @@ function dueClass(row) {
                                     <span :class="['due-date', dueClass(row)]">{{ fmtDate(row.projected_date) }}</span>
                                 </template>
                             </el-table-column>
+                            <el-table-column label="Monto" align="right" width="105">
+                                <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
+                            </el-table-column>
+                            <el-table-column label="Interés" align="right" width="145">
+                                <template #default="{ row }">
+                                    <el-tooltip v-if="row.interest_disabled" content="El interés moratorio para este pago está deshabilitado" placement="top">
+                                        <span class="interest-off">
+                                            <el-icon><InfoFilled /></el-icon>
+                                            Deshabilitado
+                                        </span>
+                                    </el-tooltip>
+                                    <template v-else>
+                                        <span :class="{ 'modal-interest': row.interest > 0 }">{{ fmtMoney(row.interest) }}</span>
+                                        <div v-if="row.days_late > 0" class="interest-days">
+                                            {{ row.days_late }} {{ row.days_late === 1 ? 'día' : 'días' }} de atraso
+                                        </div>
+                                    </template>
+                                </template>
+                            </el-table-column>
                             <el-table-column label="Total a pagar" align="right" width="120">
-                                <template #default="{ row }">{{ fmtMoney(row.total_with_interest) }}</template>
+                                <template #default="{ row }">
+                                    <strong>{{ fmtMoney(row.total_with_interest) }}</strong>
+                                </template>
                             </el-table-column>
                             <el-table-column label="" align="right" width="160">
                                 <template #default="{ row }">
@@ -239,6 +268,10 @@ function dueClass(row) {
                                 </template>
                             </el-table-column>
                         </el-table>
+
+                        <p v-if="hasInterest" class="pay-interest-note">
+                            El monto total a pagar incluye los cargos de interés moratorio. Para cualquier duda o aclaración al respecto, comunícate con el proveedor.
+                        </p>
 
                         <!-- Saldo no cubierto por la proyección (plan Personalizado) -->
                         <div v-if="uncoveredPayments.length" class="extra-pay">
@@ -282,7 +315,7 @@ function dueClass(row) {
                         />
                     </el-card>
                 </el-col>
-                <el-col :xs="24" :lg="12">
+                <el-col :span="24">
                     <el-card shadow="never" class="panel">
                         <template #header>
                             <div class="panel-header-row">
@@ -419,9 +452,15 @@ function dueClass(row) {
                     <el-table-column label="Monto" align="right" width="105">
                         <template #default="{ row }">{{ fmtMoney(row.amount) }}</template>
                     </el-table-column>
-                    <el-table-column label="Interés" align="right" width="100">
+                    <el-table-column label="Interés" align="right" width="120">
                         <template #default="{ row }">
-                            <span :class="{ 'modal-interest': row.interest > 0 }">{{ fmtMoney(row.interest) }}</span>
+                            <el-tooltip v-if="row.interest_disabled" content="El interés moratorio para este pago está deshabilitado" placement="top">
+                                <span class="interest-off">
+                                    <el-icon><InfoFilled /></el-icon>
+                                    Deshabilitado
+                                </span>
+                            </el-tooltip>
+                            <span v-else :class="{ 'modal-interest': row.interest > 0 }">{{ fmtMoney(row.interest) }}</span>
                         </template>
                     </el-table-column>
                     <el-table-column label="Total" align="right" width="110">
@@ -457,6 +496,7 @@ function dueClass(row) {
                 :balance="payBalance"
                 :initial-amount="payInitialAmount"
                 :installment-number="payInstallmentNumber"
+                :includes-interest="payIncludesInterest"
                 @success="onPaySuccess"
             />
         </template>
@@ -719,6 +759,31 @@ function dueClass(row) {
 
 .extra-pay-amount strong {
     color: #1e3a8a;
+}
+
+.interest-days {
+    font-size: 11px;
+    line-height: 1.3;
+    color: #b45309;
+}
+
+.interest-off {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #b45309;
+}
+
+.interest-off .el-icon {
+    color: #f59e0b;
+}
+
+.pay-interest-note {
+    margin: 10px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #b45309;
 }
 
 .muted {

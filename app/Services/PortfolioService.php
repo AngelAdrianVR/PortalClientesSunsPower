@@ -161,6 +161,8 @@ class PortfolioService
                 'projected_date' => $i->projected_date->format('Y-m-d'),
                 'amount' => round((float) $i->amount, 2),
                 'interest' => $i->calculateInterest(),
+                // El ERP puede desactivar el interés moratorio por cuota.
+                'interest_disabled' => $i->apply_interest === false,
                 'total_with_interest' => $i->total_with_interest,
                 'days_late' => $i->days_late,
                 'overdue' => $overdue,

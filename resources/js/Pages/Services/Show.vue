@@ -67,6 +67,9 @@ suggestedAmount.value = Number(payQuery.get('monto')) > 0 ? Number(payQuery.get(
  */
 const abonoInstallmentNumber = ref(nextPendingInstallment()?.installment_number ?? null);
 
+/** ¿El monto sugerido incluye interés moratorio? (muestra la nota en el diálogo). */
+const abonoIncludesInterest = ref(Number(nextPendingInstallment()?.interest || 0) > 0);
+
 function openAbono() {
     if (!canPay.value) {
         return;
@@ -74,6 +77,7 @@ function openAbono() {
 
     suggestedAmount.value = fixedPlanSuggestedAmount();
     abonoInstallmentNumber.value = nextPendingInstallment()?.installment_number ?? null;
+    abonoIncludesInterest.value = Number(nextPendingInstallment()?.interest || 0) > 0;
     abonoVisible.value = true;
 }
 
@@ -173,43 +177,45 @@ function openStatement() {
         <el-card shadow="never" class="panel">
             <el-tabs v-model="activeTab">
                 <el-tab-pane label="Información" name="info">
-                    <el-descriptions :column="2" border size="default" class="info-desc">
-                        <el-descriptions-item label="Cliente">{{ client.name }}</el-descriptions-item>
-                        <el-descriptions-item label="RFC">{{ client.tax_id || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Tipo de sistema">{{ service.system_type || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Tarifa CFE">{{ service.rate_type || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Fecha de inicio">{{ fmtDate(service.start_date) }}</el-descriptions-item>
-                        <el-descriptions-item label="Fecha de término">{{ fmtDate(service.completion_date) }}</el-descriptions-item>
-                        <el-descriptions-item label="Plan de pago">{{ service.payment_method || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Anticipo">{{ fmtMoney(service.down_payment) }}</el-descriptions-item>
-                        <el-descriptions-item label="Capacidad total">{{ service.total_capacity ? `${service.total_capacity} kW` : '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Paneles">{{ service.number_of_units ? `${service.number_of_units} módulos de ${service.unit_capacity} W` : '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Voltaje">{{ service.voltage || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Número de medidor">{{ service.meter_number || '—' }}</el-descriptions-item>
-                        <el-descriptions-item label="Dirección de instalación" :span="2">
-                            {{ service.installation_address }}
-                        </el-descriptions-item>
-                        <el-descriptions-item label="Contrato">
-                            <template v-if="service.contract">
-                                <el-tag size="small" :type="service.contract.status === 'Firmado' ? 'success' : 'info'">
-                                    {{ service.contract.status }}
-                                </el-tag>
-                                <a
-                                    v-if="service.contract.signed_url"
-                                    :href="service.contract.signed_url"
-                                    target="_blank"
-                                    class="contract-link"
-                                >
-                                    Ver contrato firmado
-                                </a>
-                                <span v-else class="muted"> — aún no firmado</span>
-                            </template>
-                            <span v-else class="muted">No disponible</span>
-                        </el-descriptions-item>
-                        <el-descriptions-item label="Costo total">
-                            <strong>{{ fmtMoney(service.total_amount) }}</strong>
-                        </el-descriptions-item>
-                    </el-descriptions>
+                    <div class="info-scroll">
+                        <el-descriptions :column="2" border size="default" class="info-desc">
+                            <el-descriptions-item label="Cliente">{{ client.name }}</el-descriptions-item>
+                            <el-descriptions-item label="RFC">{{ client.tax_id || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Tipo de sistema">{{ service.system_type || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Tarifa CFE">{{ service.rate_type || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Fecha de inicio">{{ fmtDate(service.start_date) }}</el-descriptions-item>
+                            <el-descriptions-item label="Fecha de término">{{ fmtDate(service.completion_date) }}</el-descriptions-item>
+                            <el-descriptions-item label="Plan de pago">{{ service.payment_method || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Anticipo">{{ fmtMoney(service.down_payment) }}</el-descriptions-item>
+                            <el-descriptions-item label="Capacidad total">{{ service.total_capacity ? `${service.total_capacity} kW` : '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Paneles">{{ service.number_of_units ? `${service.number_of_units} módulos de ${service.unit_capacity} W` : '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Voltaje">{{ service.voltage || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Número de medidor">{{ service.meter_number || '—' }}</el-descriptions-item>
+                            <el-descriptions-item label="Dirección de instalación" :span="2">
+                                {{ service.installation_address }}
+                            </el-descriptions-item>
+                            <el-descriptions-item label="Contrato">
+                                <template v-if="service.contract">
+                                    <el-tag size="small" :type="service.contract.status === 'Firmado' ? 'success' : 'info'">
+                                        {{ service.contract.status }}
+                                    </el-tag>
+                                    <a
+                                        v-if="service.contract.signed_url"
+                                        :href="service.contract.signed_url"
+                                        target="_blank"
+                                        class="contract-link"
+                                    >
+                                        Ver contrato firmado
+                                    </a>
+                                    <span v-else class="muted"> — aún no firmado</span>
+                                </template>
+                                <span v-else class="muted">No disponible</span>
+                            </el-descriptions-item>
+                            <el-descriptions-item label="Costo total">
+                                <strong>{{ fmtMoney(service.total_amount) }}</strong>
+                            </el-descriptions-item>
+                        </el-descriptions>
+                    </div>
                 </el-tab-pane>
 
                 <el-tab-pane label="Estado de cuenta" name="statement">
@@ -361,6 +367,7 @@ function openStatement() {
             :balance="balance"
             :initial-amount="suggestedAmount"
             :installment-number="abonoInstallmentNumber"
+            :includes-interest="abonoIncludesInterest"
             @success="onAbonoSuccess"
         />
     </AppLayout>
@@ -414,6 +421,18 @@ function openStatement() {
 
 .panel {
     border-radius: 12px;
+}
+
+.info-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.info-scroll .info-desc {
+    min-width: 560px;
 }
 
 .info-desc :deep(.el-descriptions__label) {

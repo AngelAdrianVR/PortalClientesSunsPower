@@ -240,6 +240,34 @@ class PortalPaymentTest extends TestCase
         $this->assertTrue($item['pending_review']);
     }
 
+    public function test_summary_flags_installments_with_interest_disabled(): void
+    {
+        [$client, $order] = $this->makeClientWithOrder('Personalizado');
+
+        $order->paymentInstallments()->create([
+            'installment_number' => 1,
+            'label' => 'Sin interés',
+            'projected_date' => now()->subDays(20)->format('Y-m-d'),
+            'amount' => 2500,
+            'apply_interest' => false,
+        ]);
+
+        $order->paymentInstallments()->create([
+            'installment_number' => 2,
+            'label' => 'Con interés',
+            'projected_date' => now()->subDays(10)->format('Y-m-d'),
+            'amount' => 2500,
+            'apply_interest' => true,
+        ]);
+
+        $rows = PortfolioService::summary($client)['remaining_payments'];
+
+        $this->assertTrue($rows[0]['interest_disabled']);
+        $this->assertSame(0.0, (float) $rows[0]['interest']);
+        $this->assertFalse($rows[1]['interest_disabled']);
+        $this->assertGreaterThan(0, (float) $rows[1]['interest']);
+    }
+
     public function test_remaining_payment_is_flagged_pending_review_after_abono(): void
     {
         Storage::fake('erp_media');
