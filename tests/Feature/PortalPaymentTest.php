@@ -15,7 +15,7 @@ class PortalPaymentTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeClientWithOrder(): array
+    private function makeClientWithOrder(?string $paymentMethod = 'Personalizado'): array
     {
         $client = Client::create([
             'name' => 'Cliente Demo',
@@ -27,6 +27,7 @@ class PortalPaymentTest extends TestCase
             'total_amount' => 10000,
             'status' => 'Aceptado',
             'service_number' => 'S-001',
+            'payment_method' => $paymentMethod,
         ]);
 
         return [$client, $order];
@@ -132,6 +133,111 @@ class PortalPaymentTest extends TestCase
 
         $response->assertNotFound();
         $this->assertDatabaseCount('portal_payments', 0);
+    }
+
+    public function test_abono_is_blocked_when_service_has_no_payment_plan(): void
+    {
+        Storage::fake('erp_media');
+
+        [$client, $order] = $this->makeClientWithOrder(null);
+
+        $response = $this->actingAs($client, 'portal')->post(route('portal-payments.store'), [
+            'service_order_id' => $order->id,
+            'amount' => 1500,
+            'payment_date' => now()->format('Y-m-d'),
+            'method' => 'Transferencia',
+            'proof' => UploadedFile::fake()->create('comprobante.pdf', 100, 'application/pdf'),
+        ]);
+
+        $response->assertSessionHasErrors('amount');
+        $this->assertDatabaseCount('portal_payments', 0);
+    }
+
+    public function test_summary_offers_uncovered_payment_for_custom_plan_without_installments(): void
+    {
+        [$client, $order] = $this->makeClientWithOrder('Personalizado');
+
+        $summary = PortfolioService::summary($client);
+        $item = collect($summary['uncovered_payments'])->firstWhere('service_id', $order->id);
+
+        $this->assertNotNull($item);
+        $this->assertSame(10000.0, (float) $item['uncovered_amount']);
+        $this->assertSame(0.0, (float) $item['projected_total']);
+        $this->assertFalse($item['pending_review']);
+        $this->assertSame('Personalizado', $item['payment_method']);
+        $this->assertEmpty($summary['services_without_plan']);
+    }
+
+    public function test_summary_uncovered_amount_excludes_projected_installments(): void
+    {
+        [$client, $order] = $this->makeClientWithOrder('Personalizado');
+
+        // El proveedor programó una sola cuota parcial de un saldo de 10000.
+        $order->paymentInstallments()->create([
+            'installment_number' => 1,
+            'label' => 'Parcialidad 1',
+            'projected_date' => now()->addMonth()->format('Y-m-d'),
+            'amount' => 2500,
+        ]);
+
+        $item = collect(PortfolioService::summary($client)['uncovered_payments'])->firstWhere('service_id', $order->id);
+
+        $this->assertNotNull($item);
+        $this->assertSame(2500.0, (float) $item['projected_total']);
+        $this->assertSame(7500.0, (float) $item['uncovered_amount']);
+    }
+
+    public function test_summary_does_not_offer_uncovered_payment_when_projection_covers_balance(): void
+    {
+        [$client, $order] = $this->makeClientWithOrder('Personalizado');
+        $this->makeInstallments($order); // 4000 + 4000 + 2000 = 10000 (saldo total).
+
+        $summary = PortfolioService::summary($client);
+
+        $this->assertNull(collect($summary['uncovered_payments'])->firstWhere('service_id', $order->id));
+        $this->assertCount(3, $summary['remaining_payments']);
+        $this->assertFalse($summary['remaining_payments'][0]['plan_missing']);
+    }
+
+    public function test_summary_lists_services_without_payment_plan(): void
+    {
+        [$client, $order] = $this->makeClientWithOrder(null);
+
+        // Aunque existan cuotas viejas, sin plan de pago no se permite pagar.
+        $order->paymentInstallments()->create([
+            'installment_number' => 1,
+            'label' => 'Mensualidad',
+            'projected_date' => now()->addMonth()->format('Y-m-d'),
+            'amount' => 1000,
+        ]);
+
+        $summary = PortfolioService::summary($client);
+        $item = collect($summary['services_without_plan'])->firstWhere('service_id', $order->id);
+
+        $this->assertNotNull($item);
+        $this->assertSame(10000.0, (float) $item['service_balance']);
+        $this->assertTrue($summary['remaining_payments'][0]['plan_missing']);
+        $this->assertNull(collect($summary['uncovered_payments'])->firstWhere('service_id', $order->id));
+    }
+
+    public function test_uncovered_payment_in_review_flags_custom_plan_row(): void
+    {
+        Storage::fake('erp_media');
+
+        [$client, $order] = $this->makeClientWithOrder('Personalizado');
+
+        $this->actingAs($client, 'portal')->post(route('portal-payments.store'), [
+            'service_order_id' => $order->id,
+            'amount' => 10000,
+            'payment_date' => now()->format('Y-m-d'),
+            'method' => 'Transferencia',
+            'proof' => UploadedFile::fake()->create('comprobante.pdf', 100, 'application/pdf'),
+        ])->assertSessionHasNoErrors();
+
+        $item = collect(PortfolioService::summary($client)['uncovered_payments'])->firstWhere('service_id', $order->id);
+
+        $this->assertNotNull($item);
+        $this->assertTrue($item['pending_review']);
     }
 
     public function test_remaining_payment_is_flagged_pending_review_after_abono(): void

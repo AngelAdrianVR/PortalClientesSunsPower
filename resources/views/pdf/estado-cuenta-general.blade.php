@@ -23,6 +23,10 @@
                   color: #1e3a8a; border-left: 4px solid #facc15; padding-left: 6px; }
         .service-divider { margin: 14px 0 10px; font-size: 12px; font-weight: bold; color: #1e3a8a;
                            border-bottom: 2px solid #facc15; padding-bottom: 4px; }
+        .status-paid { color: #15803d; }
+        .status-due { color: #ea580c; }
+        .status-overdue { color: #b91c1c; }
+        .status-other { color: #1e3a8a; }
         .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid #e5e7eb;
                   font-size: 8px; color: #9ca3af; text-align: center; }
         .page-break { page-break-before: always; }

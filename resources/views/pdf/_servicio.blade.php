@@ -1,17 +1,15 @@
 @php
     $statusText = [
-        'paid' => 'Pagada',
-        'on_time' => 'Pagada a tiempo',
-        'upcoming' => 'Por vencer',
+        'paid' => 'Pagado',
         'pending' => 'Pendiente',
-        'late' => 'Vencida',
-        'defaulted' => 'Vencida (+10 días)',
+        'due_soon' => 'Por vencer',
+        'overdue' => 'Vencido',
     ];
 
     $statusClass = static fn ($s) => match ($s) {
-        'paid', 'on_time' => 'status-paid',
-        'late' => 'status-late',
-        'defaulted' => 'status-defaulted',
+        'paid' => 'status-paid',
+        'due_soon' => 'status-due',
+        'overdue' => 'status-overdue',
         default => 'status-other',
     };
 

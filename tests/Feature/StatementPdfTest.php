@@ -50,6 +50,17 @@ class StatementPdfTest extends TestCase
         $this->assertStringContainsString('application/pdf', $response->headers->get('content-type'));
     }
 
+    public function test_client_can_download_general_statement_pdf(): void
+    {
+        [$client] = $this->makeClientWithOrderAndInstallments();
+
+        $response = $this->actingAs($client, 'portal')
+            ->get(route('statement.download-all'));
+
+        $response->assertOk();
+        $this->assertStringContainsString('application/pdf', $response->headers->get('content-type'));
+    }
+
     public function test_client_cannot_download_other_clients_statement(): void
     {
         [$client] = $this->makeClientWithOrderAndInstallments();

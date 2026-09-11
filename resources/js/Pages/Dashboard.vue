@@ -4,6 +4,7 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
+import { NO_PLAN_MESSAGE } from '@/utils/plan';
 
 const props = defineProps({
     summary: { type: Object, default: null },
@@ -50,12 +51,30 @@ function openStatement() {
  * pre-cargado (total con interés si está vencida, monto base si no) y editable.
  */
 function startPayment(row) {
+    if (row.plan_missing) {
+        return;
+    }
+
     payServiceId.value = row.service_id;
     payServiceNumber.value = row.service_number || '';
     payBalance.value = Number(row.service_balance || 0);
     payInitialAmount.value = row.overdue ? Number(row.total_with_interest) : Number(row.amount);
     payInstallmentNumber.value = row.installment_number ? Number(row.installment_number) : null;
     payPaymentMethod.value = row.payment_method || null;
+    payVisible.value = true;
+}
+
+/**
+ * Registra un pago por el saldo que la proyección no cubre (plan Personalizado
+ * sin cuotas, o con cuotas que en suma no cubren el saldo pendiente).
+ */
+function startUncoveredPayment(item) {
+    payServiceId.value = item.service_id;
+    payServiceNumber.value = item.service_number || '';
+    payBalance.value = Number(item.service_balance || 0);
+    payInitialAmount.value = Number(item.uncovered_amount || 0);
+    payInstallmentNumber.value = null;
+    payPaymentMethod.value = item.payment_method || null;
     payVisible.value = true;
 }
 
@@ -67,11 +86,23 @@ function onPaySuccess() {
 /** Abonos rechazados recientes (con motivo) que muestra el modal de abonos. */
 const rejectedAbonos = computed(() => props.summary?.rejected_abonos ?? []);
 
+/** Saldo no cubierto por la proyección (plan Personalizado): pago libre. */
+const uncoveredPayments = computed(() => props.summary?.uncovered_payments ?? []);
+
+/** Servicios sin plan de pago: el registro de pagos está bloqueado. */
+const servicesWithoutPlan = computed(() => props.summary?.services_without_plan ?? []);
+
+const noPlanMessage = NO_PLAN_MESSAGE;
+
 /**
  * Reintenta el pago de un abono rechazado: abre el diálogo con el monto original
  * para subir un comprobante válido.
  */
 function retryPayment(row) {
+    if (row.plan_missing) {
+        return;
+    }
+
     reviewVisible.value = false;
     startPayment({
         service_id: row.service_id,
@@ -170,7 +201,7 @@ function dueClass(row) {
                 <el-col :xs="24" :lg="12">
                     <el-card shadow="never" class="panel">
                         <template #header>
-                            <div class="panel-header"><span>Pagos restantes</span></div>
+                            <div class="panel-header"><span>Pagos proyectados pendientes</span></div>
                         </template>
 
                         <div v-if="summary.remaining_payments.length" class="pay-legend">
@@ -196,14 +227,59 @@ function dueClass(row) {
                             </el-table-column>
                             <el-table-column label="" align="right" width="160">
                                 <template #default="{ row }">
-                                    <el-button v-if="!row.pending_review" type="primary" size="small" @click="startPayment(row)">
+                                    <el-tag v-if="row.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                                    <el-tooltip v-else-if="row.plan_missing" :content="noPlanMessage" placement="top">
+                                        <span>
+                                            <el-button type="primary" size="small" disabled>Pagar</el-button>
+                                        </span>
+                                    </el-tooltip>
+                                    <el-button v-else type="primary" size="small" @click="startPayment(row)">
                                         Pagar
                                     </el-button>
-                                    <el-tag v-else type="warning" size="small">Pendiente de revisión</el-tag>
                                 </template>
                             </el-table-column>
                         </el-table>
-                        <el-empty v-else description="No tienes pagos pendientes" :image-size="70" />
+
+                        <!-- Saldo no cubierto por la proyección (plan Personalizado) -->
+                        <div v-if="uncoveredPayments.length" class="extra-pay">
+                            <div class="extra-pay-title">Registrar pago</div>
+                            <p class="extra-pay-note">
+                                Tienes saldo pendiente que no está cubierto por tus pagos proyectados. Puedes registrar un pago por el monto que decidas.
+                            </p>
+                            <div v-for="item in uncoveredPayments" :key="`uncovered-${item.service_id}`" class="extra-pay-row">
+                                <div class="extra-pay-info">
+                                    <span class="extra-pay-service">{{ item.service_number }}</span>
+                                    <span class="extra-pay-amount">
+                                        Saldo por cubrir: <strong>{{ fmtMoney(item.uncovered_amount) }}</strong>
+                                    </span>
+                                </div>
+                                <el-tag v-if="item.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                                <el-button v-else type="primary" size="small" @click="startUncoveredPayment(item)">
+                                    Registrar pago
+                                </el-button>
+                            </div>
+                        </div>
+
+                        <!-- Servicios sin plan de pago asignado por el proveedor -->
+                        <div v-if="servicesWithoutPlan.length" class="extra-pay">
+                            <div class="extra-pay-title">Sin plan de pago</div>
+                            <p class="extra-pay-note">{{ noPlanMessage }}</p>
+                            <div v-for="item in servicesWithoutPlan" :key="`no-plan-${item.service_id}`" class="extra-pay-row">
+                                <div class="extra-pay-info">
+                                    <span class="extra-pay-service">{{ item.service_number }}</span>
+                                    <span class="extra-pay-amount">
+                                        Saldo pendiente: <strong>{{ fmtMoney(item.service_balance) }}</strong>
+                                    </span>
+                                </div>
+                                <el-button type="primary" size="small" disabled>Registrar pago</el-button>
+                            </div>
+                        </div>
+
+                        <el-empty
+                            v-if="!summary.remaining_payments.length && !uncoveredPayments.length && !servicesWithoutPlan.length"
+                            description="No tienes pagos pendientes"
+                            :image-size="70"
+                        />
                     </el-card>
                 </el-col>
                 <el-col :xs="24" :lg="12">
@@ -302,9 +378,18 @@ function dueClass(row) {
                         </el-table-column>
                         <el-table-column label="" align="center" width="110">
                             <template #default="{ row }">
-                                <el-tooltip :disabled="row.service_balance > 0" content="No tienes saldo pendiente para abonar" placement="top">
+                                <el-tooltip
+                                    :disabled="row.service_balance > 0 && !row.plan_missing"
+                                    :content="row.plan_missing ? noPlanMessage : 'No tienes saldo pendiente para abonar'"
+                                    placement="top"
+                                >
                                     <span>
-                                        <el-button type="primary" size="small" :disabled="row.service_balance <= 0" @click="retryPayment(row)">
+                                        <el-button
+                                            type="primary"
+                                            size="small"
+                                            :disabled="row.service_balance <= 0 || row.plan_missing"
+                                            @click="retryPayment(row)"
+                                        >
                                             Reintentar
                                         </el-button>
                                     </span>
@@ -344,10 +429,15 @@ function dueClass(row) {
                     </el-table-column>
                     <el-table-column label="" align="center" width="160">
                         <template #default="{ row }">
-                            <el-button v-if="!row.pending_review" type="primary" size="small" @click="startPayment(row)">
+                            <el-tag v-if="row.pending_review" type="warning" size="small">Pendiente de revisión</el-tag>
+                            <el-tooltip v-else-if="row.plan_missing" :content="noPlanMessage" placement="top">
+                                <span>
+                                    <el-button type="primary" size="small" disabled>Pagar</el-button>
+                                </span>
+                            </el-tooltip>
+                            <el-button v-else type="primary" size="small" @click="startPayment(row)">
                                 Pagar
                             </el-button>
-                            <el-tag v-else type="warning" size="small">Pendiente de revisión</el-tag>
                         </template>
                     </el-table-column>
                 </el-table>
@@ -575,6 +665,59 @@ function dueClass(row) {
 
 .panel-title {
     font-weight: 700;
+    color: #1e3a8a;
+}
+
+.extra-pay {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #eef0f3;
+}
+
+.extra-pay-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e3a8a;
+    margin-bottom: 4px;
+}
+
+.extra-pay-note {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.extra-pay-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+}
+
+.extra-pay-row + .extra-pay-row {
+    border-top: 1px dashed #eef0f3;
+}
+
+.extra-pay-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.extra-pay-service {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.extra-pay-amount {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.extra-pay-amount strong {
     color: #1e3a8a;
 }
 

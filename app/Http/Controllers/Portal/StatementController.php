@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Models\PaymentInstallment;
 use App\Models\ServiceOrder;
 use App\Services\PortfolioService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -122,13 +123,14 @@ class StatementController extends Controller
                     'label' => $i->label,
                     'projected_date' => $i->projected_date?->format('Y-m-d'),
                     'amount' => round((float) $i->amount, 2),
-                    'status' => $i->current_status,
+                    'status' => $this->installmentStatus($i),
                     'interest' => $i->calculateInterest(),
                     'total_with_interest' => $i->total_with_interest,
                 ])
                 ->all(),
+            // Del más antiguo al más reciente (mismo orden en pantalla y PDF).
             'payments' => $o->payments
-                ->sortByDesc(fn ($p) => $p->payment_date?->timestamp ?? 0)
+                ->sortBy([['payment_date', 'asc'], ['id', 'asc']])
                 ->values()
                 ->map(fn ($p) => [
                     'payment_date' => $p->payment_date?->format('Y-m-d'),
@@ -139,6 +141,32 @@ class StatementController extends Controller
                 ])
                 ->all(),
         ];
+    }
+
+    /**
+     * Estatus de una cuota para el estado de cuenta:
+     *  - paid: ya pagada (verde)
+     *  - due_soon: vence en 7 días o menos (naranja)
+     *  - overdue: ya venció (rojo)
+     *  - pending: aún no vence y falta más de una semana (texto normal)
+     */
+    private function installmentStatus(PaymentInstallment $installment): string
+    {
+        if ($installment->isPaid()) {
+            return 'paid';
+        }
+
+        $dueDate = $installment->projected_date;
+
+        if (! $dueDate) {
+            return 'pending';
+        }
+
+        if ($dueDate->lt(today())) {
+            return 'overdue';
+        }
+
+        return $dueDate->lte(today()->addDays(7)) ? 'due_soon' : 'pending';
     }
 
     /** Estado de cuenta (datos) por cada servicio visible del cliente. */

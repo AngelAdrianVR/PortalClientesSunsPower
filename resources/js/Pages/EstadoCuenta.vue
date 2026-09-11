@@ -43,12 +43,10 @@ const selectedServices = computed(() => {
 });
 
 const statusMeta = {
-    paid: { label: 'Pagada', cls: 'is-ok' },
-    on_time: { label: 'Pagada a tiempo', cls: 'is-ok' },
-    upcoming: { label: 'Por vencer', cls: 'is-info' },
-    pending: { label: 'Pendiente', cls: 'is-warn' },
-    late: { label: 'Vencida', cls: 'is-warn' },
-    defaulted: { label: 'Vencida (+10 días)', cls: 'is-bad' },
+    paid: { label: 'Pagado', cls: 'is-ok' },
+    pending: { label: 'Pendiente', cls: 'is-info' },
+    due_soon: { label: 'Por vencer', cls: 'is-due' },
+    overdue: { label: 'Vencido', cls: 'is-bad' },
 };
 
 function statusOf(status) {
@@ -491,8 +489,8 @@ function closeTab() {
     font-weight: 600;
 }
 
-.is-warn {
-    color: #b45309;
+.is-due {
+    color: #ea580c;
     font-weight: 600;
 }
 

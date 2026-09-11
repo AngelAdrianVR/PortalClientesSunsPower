@@ -4,7 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import AbonoDialog from '@/Components/AbonoDialog.vue';
 import { fmtMoney, fmtDate } from '@/utils/format';
-import { isFixedPaymentPlan } from '@/utils/plan';
+import { hasPaymentPlan, isFixedPaymentPlan, NO_PLAN_MESSAGE } from '@/utils/plan';
 
 const props = defineProps({
     service: { type: Object, required: true },
@@ -18,9 +18,22 @@ const props = defineProps({
 
 const activeTab = ref('info');
 
+/** ¿El proveedor ya asignó un plan de pago a este servicio? (sin plan no se puede pagar). */
+const hasPlan = computed(() => hasPaymentPlan(props.service.payment_method));
+
+/** El registro de pago solo se habilita con saldo pendiente y plan asignado. */
+const canPay = computed(() => props.balance > 0 && hasPlan.value);
+
+/** Motivo por el que el botón "Registrar abono" está deshabilitado. */
+const payBlockedMessage = computed(() =>
+    hasPlan.value ? 'No tienes saldo pendiente para abonar' : NO_PLAN_MESSAGE
+);
+
+const noPlanMessage = NO_PLAN_MESSAGE;
+
 // Si llega con ?pagar=1&monto=… (botones "Pagar" del panel) se abre el registro de abono.
 const payQuery = new URLSearchParams(window.location.search);
-const abonoVisible = ref(payQuery.get('pagar') === '1');
+const abonoVisible = ref(payQuery.get('pagar') === '1' && canPay.value);
 const suggestedAmount = ref(null);
 
 /** Próxima cuota pendiente de la proyección (la primera sin pago). */
@@ -55,6 +68,10 @@ suggestedAmount.value = Number(payQuery.get('monto')) > 0 ? Number(payQuery.get(
 const abonoInstallmentNumber = ref(nextPendingInstallment()?.installment_number ?? null);
 
 function openAbono() {
+    if (!canPay.value) {
+        return;
+    }
+
     suggestedAmount.value = fixedPlanSuggestedAmount();
     abonoInstallmentNumber.value = nextPendingInstallment()?.installment_number ?? null;
     abonoVisible.value = true;
@@ -128,7 +145,7 @@ function openStatement() {
         </div>
 
         <el-alert
-            v-if="balance > 0"
+            v-if="balance > 0 && hasPlan"
             type="info"
             show-icon
             :closable="false"
@@ -138,6 +155,19 @@ function openStatement() {
                 Saldo pendiente de este servicio: <strong>{{ fmtMoney(balance) }}</strong>
             </template>
             Puedes registrar abonos desde la pestaña Pagos; quedarán en revisión hasta que la empresa valide el comprobante.
+        </el-alert>
+
+        <el-alert
+            v-else-if="balance > 0 && !hasPlan"
+            type="warning"
+            show-icon
+            :closable="false"
+            class="balance-alert"
+        >
+            <template #title>
+                Saldo pendiente de este servicio: <strong>{{ fmtMoney(balance) }}</strong>
+            </template>
+            {{ noPlanMessage }}
         </el-alert>
 
         <el-card shadow="never" class="panel">
@@ -243,9 +273,9 @@ function openStatement() {
                     </template>
 
                     <div class="payments-actions">
-                        <el-tooltip :disabled="balance > 0" content="No tienes saldo pendiente para abonar" placement="top">
+                        <el-tooltip :disabled="canPay" :content="payBlockedMessage" placement="top">
                             <span>
-                                <el-button type="primary" :disabled="balance <= 0" @click="openAbono">
+                                <el-button type="primary" :disabled="!canPay" @click="openAbono">
                                     <el-icon><Plus /></el-icon>
                                     Registrar abono
                                 </el-button>

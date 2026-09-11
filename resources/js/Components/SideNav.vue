@@ -72,6 +72,7 @@ function goDashboard() {
                 onerror="this.style.display='none'"
             />
             <span v-if="!collapsed" class="portal-brand-name">SUN'S POWER MX</span>
+            <span v-if="!collapsed" class="portal-brand-name">PORTAL DE CLIENTES</span>
         </div>
 
         <el-menu
@@ -111,6 +112,7 @@ function goDashboard() {
                     onerror="this.style.display='none'"
                 />
                 <span class="portal-brand-name">SUN'S POWER MX</span>
+                <span class="portal-brand-name">PORTAL DE CLIENTES</span>
             </div>
 
             <el-menu :default-active="activeIndex" class="portal-menu" @select="onSelect">
@@ -135,7 +137,7 @@ function goDashboard() {
                 </div>
                 <el-button class="drawer-logout" plain @click="logout">
                     <el-icon><SwitchButton /></el-icon>
-                    Cerrar sesión
+                    <span class="ml-2">Cerrar sesión</span>
                 </el-button>
             </div>
         </div>

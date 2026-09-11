@@ -36,6 +36,14 @@ class PortalPaymentController extends Controller
         $serviceOrder = ServiceOrder::where('client_id', $client->id)
             ->findOrFail($validated['service_order_id']);
 
+        // Sin plan de pago asignado por el proveedor no se aceptan abonos: el
+        // portal deshabilita el registro y pide contactar al proveedor.
+        if (blank($serviceOrder->payment_method)) {
+            throw ValidationException::withMessages([
+                'amount' => 'Aún no tienes un plan de pago asignado, por lo que no es posible registrar pagos. Comunícate con el proveedor para más información.',
+            ]);
+        }
+
         // El abono no puede superar el saldo pendiente del servicio.
         $balance = PortfolioService::balanceForOrder($serviceOrder);
 

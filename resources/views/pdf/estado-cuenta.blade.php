@@ -28,8 +28,8 @@
         .totals .grand .right { color: #1e3a8a; }
         .interest-line .right { color: #b91c1c; }
         .status-paid { color: #15803d; }
-        .status-late { color: #b45309; }
-        .status-defaulted { color: #b91c1c; }
+        .status-due { color: #ea580c; }
+        .status-overdue { color: #b91c1c; }
         .status-other { color: #1e3a8a; }
         .footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid #e5e7eb;
                   font-size: 8px; color: #9ca3af; text-align: center; }

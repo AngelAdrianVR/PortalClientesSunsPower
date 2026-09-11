@@ -45,6 +45,7 @@ return new class extends Migration
                 $table->string('service_number')->nullable();
                 $table->string('status')->nullable();
                 $table->decimal('total_amount', 12, 2)->default(0);
+                $table->string('payment_method')->nullable();
                 $table->timestamps();
             });
         }
@@ -68,6 +69,10 @@ return new class extends Migration
                 $table->unsignedBigInteger('service_order_id')->nullable();
                 $table->decimal('amount', 12, 2)->default(0);
                 $table->decimal('interest_amount', 12, 2)->default(0);
+                $table->date('payment_date')->nullable();
+                $table->string('method')->nullable();
+                $table->string('reference')->nullable();
+                $table->text('notes')->nullable();
                 $table->timestamps();
             });
         }
