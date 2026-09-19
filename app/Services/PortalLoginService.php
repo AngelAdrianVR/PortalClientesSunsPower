@@ -4,22 +4,44 @@ namespace App\Services;
 
 use App\Models\Client;
 use App\Models\Contact;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Identificación de quienes entran al PORTAL DE CLIENTES.
  *
  * Los usuarios del portal provienen EXCLUSIVAMENTE de la tabla `clients`
  * del ERP (NO de `users`, que es de empleados). Se identifica al cliente
- * con cualquiera de estos datos (sin importar mayúsculas/minúsculas):
+ * con cualquiera de estos datos:
  *   - nombre completo (clients.name) o persona de contacto (contact_person)
  *   - RFC (clients.tax_id)
  *   - correo o teléfono de un contacto del cliente (contacts)
+ *
+ * La comparación de texto es tolerante: no distingue mayúsculas de minúsculas,
+ * ignora acentos (RODRIGUEZ = RODRÍGUEZ) y unifica espacios de más o espacios
+ * "duros". Se hace así —y en PHP, no en SQL— para que el resultado no dependa
+ * de la collation de MySQL del servidor: la misma persona debe poder entrar
+ * igual en local y en producción.
  *
  * Solo se permite el acceso cuando hay UNA ficha de cliente inequívoca.
  */
 class PortalLoginService
 {
+    /** Cuántos nombres parecidos se guardan en el log cuando no hay coincidencia. */
+    private const SIMILAR_LIMIT = 5;
+
+    /**
+     * Acentos que se ignoran al comparar: así "RODRIGUEZ" encuentra a
+     * "RODRÍGUEZ". La ñ NO se convierte en n a propósito (PEÑA ≠ PENA).
+     */
+    private const ACCENTS = [
+        'á' => 'a', 'à' => 'a', 'ä' => 'a', 'â' => 'a', 'ã' => 'a',
+        'é' => 'e', 'è' => 'e', 'ë' => 'e', 'ê' => 'e',
+        'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'î' => 'i',
+        'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o', 'õ' => 'o',
+        'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+        'ç' => 'c',
+    ];
+
     public function resolve(string $identifier): ?Client
     {
         $identifier = trim($identifier);
@@ -28,49 +50,81 @@ class PortalLoginService
             return null;
         }
 
-        $lower = mb_strtolower($identifier);
-        $digits = preg_replace('/\D/', '', $identifier);
+        // Comparación en PHP con texto normalizado (minúsculas, sin acentos y
+        // con espacios simples): NO depende de la collation de MySQL ni de cómo
+        // quedó capturado el nombre (acentos, dobles espacios, espacios duros…).
+        // La tabla de clientes es pequeña y esto solo ocurre al iniciar sesión.
+        $normalized = $this->normalize($identifier);
+        $digits = preg_replace('/\D/', '', $identifier) ?: '';
 
-        $candidates = new Collection();
+        $ids = [];
+        $similar = [];
 
-        // Teléfono de contacto (solo dígitos)
-        if ($digits !== '') {
-            $candidates = $candidates->merge(
-                Contact::query()
-                    ->where('contactable_type', Client::class)
-                    ->whereNotNull('phone')
-                    ->get()
-                    ->filter(fn (Contact $contact) => $contact->phone && preg_replace('/\D/', '', $contact->phone) === $digits)
-                    ->map(fn (Contact $contact) => $contact->contactable)
-                    ->filter()
-            );
+        // Contactos: teléfono (solo dígitos) y correo (sin distinguir mayúsculas).
+        foreach (Contact::query()->where('contactable_type', Client::class)->get() as $contact) {
+            $matchesPhone = $digits !== '' && preg_replace('/\D/', '', (string) $contact->phone) === $digits;
+            $matchesEmail = $this->normalize($contact->email) === $normalized;
+
+            if ($matchesPhone || $matchesEmail) {
+                $ids[] = (int) $contact->contactable_id;
+            }
         }
 
-        // Correo de contacto
-        $candidates = $candidates->merge(
-            Contact::query()
-                ->where('contactable_type', Client::class)
-                ->whereNotNull('email')
-                ->get()
-                ->filter(fn (Contact $contact) => mb_strtolower(trim((string) $contact->email)) === $lower)
-                ->map(fn (Contact $contact) => $contact->contactable)
-                ->filter()
-        );
+        // Ficha del cliente: RFC, razón social y persona de contacto.
+        $firstWord = explode(' ', $normalized)[0] ?? '';
 
-        // RFC
-        $candidates = $candidates->merge(
-            Client::whereRaw('LOWER(COALESCE(tax_id, \'\')) = ?', [$lower])->get()
-        );
+        Client::query()
+            ->select(['id', 'name', 'contact_person', 'tax_id'])
+            ->chunkById(500, function ($clients) use ($normalized, $firstWord, &$ids, &$similar) {
+                foreach ($clients as $client) {
+                    $name = $this->normalize($client->name);
+                    $contactPerson = $this->normalize($client->contact_person);
 
-        // Nombre de la ficha o persona de contacto
-        $candidates = $candidates->merge(
-            Client::whereRaw('LOWER(TRIM(name)) = ?', [$lower])
-                ->orWhereRaw('LOWER(TRIM(COALESCE(contact_person, \'\'))) = ?', [$lower])
-                ->get()
-        );
+                    if ($name === $normalized
+                        || $contactPerson === $normalized
+                        || $this->normalize($client->tax_id) === $normalized) {
+                        $ids[] = (int) $client->id;
 
-        $unique = $candidates->unique('id')->values();
+                        continue;
+                    }
 
-        return $unique->count() === 1 ? $unique->first() : null;
+                    // Nombres parecidos: solo para poder diagnosticar desde el log.
+                    if (count($similar) < self::SIMILAR_LIMIT
+                        && $firstWord !== ''
+                        && (str_contains($name, $firstWord) || str_contains($contactPerson, $firstWord))) {
+                        $similar[] = trim($client->name.' (id '.$client->id.')');
+                    }
+                }
+            });
+
+        $ids = array_values(array_unique($ids));
+
+        if (count($ids) === 1) {
+            return Client::find($ids[0]);
+        }
+
+        // Sin coincidencia (o con varias candidatas): se registra para poder
+        // saber desde el log si el cliente no existe o si está escrito distinto.
+        Log::notice('Portal: identificación sin coincidencia única.', [
+            'identificador' => $identifier,
+            'coincidencias' => count($ids),
+            'nombres_parecidos' => $similar,
+        ]);
+
+        return null;
+    }
+
+    /**
+     * Texto comparable: minúsculas, sin acentos y con espacios simples.
+     * Los espacios "duros" (no separables) y los repetidos se unifican, porque
+     * es habitual que vengan pegados desde Excel o desde el ERP.
+     */
+    private function normalize(?string $value): string
+    {
+        $value = str_replace(["\u{A0}", "\u{2007}", "\u{202F}"], ' ', (string) $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        $value = mb_strtolower(trim($value));
+
+        return strtr($value, self::ACCENTS);
     }
 }

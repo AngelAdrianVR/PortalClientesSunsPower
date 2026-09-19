@@ -45,10 +45,11 @@
                 <th style="width:5%">#</th>
                 <th>Concepto</th>
                 <th style="width:13%">Vencimiento</th>
-                <th class="right" style="width:13%">Monto</th>
-                <th style="width:16%">Estatus</th>
-                <th class="right" style="width:13%">Interés moratorio</th>
-                <th class="right" style="width:14%">Total a pagar</th>
+                <th class="right" style="width:12%">Monto</th>
+                <th style="width:14%">Estatus</th>
+                <th class="right" style="width:12%">Interés</th>
+                <th class="right" style="width:14%">Interés pagado</th>
+                <th class="right" style="width:14%">Total</th>
             </tr>
         </thead>
         <tbody>
@@ -60,11 +61,12 @@
                     <td class="right">{{ $money($i['amount']) }}</td>
                     <td class="{{ $statusClass($i['status']) }}">{{ $statusText[$i['status']] ?? $i['status'] }}</td>
                     <td class="right">{{ $money($i['interest']) }}</td>
-                    <td class="right">{{ $money($i['total_with_interest']) }}</td>
+                    <td class="right">{{ $money($i['paid_interest']) }}</td>
+                    <td class="right">{{ $money($i['status'] === 'paid' ? $i['paid_total'] : $i['total_with_interest']) }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7">Este servicio no tiene cuotas registradas (plan personalizado).</td>
+                    <td colspan="8">Este servicio no tiene cuotas registradas (plan personalizado).</td>
                 </tr>
             @endforelse
         </tbody>
@@ -76,10 +78,11 @@
     <table>
         <thead>
             <tr>
-                <th style="width:18%">Fecha</th>
-                <th class="right" style="width:18%">Monto</th>
-                <th class="right" style="width:16%">Interés</th>
-                <th style="width:20%">Método</th>
+                <th style="width:13%">Fecha</th>
+                <th class="right" style="width:18%">Capital pagado</th>
+                <th class="right" style="width:16%">Interés pagado</th>
+                <th class="right" style="width:16%">Total pagado</th>
+                <th style="width:16%">Método</th>
                 <th>Referencia</th>
             </tr>
         </thead>
@@ -87,14 +90,15 @@
             @forelse ($payload['payments'] as $p)
                 <tr>
                     <td>{{ $date($p['payment_date']) }}</td>
-                    <td class="right">{{ $money($p['amount']) }}</td>
+                    <td class="right">{{ $money($p['principal']) }}</td>
                     <td class="right">{{ $money($p['interest_amount']) }}</td>
+                    <td class="right">{{ $money($p['amount']) }}</td>
                     <td>{{ $p['method'] ?: '—' }}</td>
                     <td>{{ $p['reference'] ?: '—' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="5">Aún no hay pagos registrados.</td>
+                    <td colspan="6">Aún no hay pagos registrados.</td>
                 </tr>
             @endforelse
         </tbody>
@@ -115,9 +119,19 @@
             <td class="label">Interés moratorio acumulado:</td>
             <td class="right">{{ $money($payload['overdue_interest']) }}</td>
         </tr>
+        <tr>
+            <td class="label">Saldo de capital pendiente:</td>
+            <td class="right">{{ $money($payload['balance']) }}</td>
+        </tr>
     @endif
     <tr class="grand">
-        <td class="label">Saldo pendiente:</td>
-        <td class="right">{{ $money($payload['balance']) }}</td>
+        <td class="label">
+            {{ (float) $payload['overdue_interest'] > 0
+                ? 'Total pendiente a pagar (capital + interés):'
+                : 'Saldo pendiente:' }}
+        </td>
+        <td class="right">
+            {{ $money((float) $payload['balance'] + (float) $payload['overdue_interest']) }}
+        </td>
     </tr>
 </table>

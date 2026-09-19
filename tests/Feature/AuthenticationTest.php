@@ -113,6 +113,41 @@ class AuthenticationTest extends TestCase
         $this->assertTrue($this->portalGuest());
     }
 
+    /**
+     * El nombre debe poder entrar igual en local y en producción: la diferencia
+     * entre mayúsculas, acentos y espacios no puede depender de la collation de
+     * MySQL del servidor (era el caso de GUADALUPE ELVIRA GUERRERO RODRIGUEZ).
+     */
+    public function test_client_can_authenticate_by_name_ignoring_accents(): void
+    {
+        $client = Client::create(['name' => 'GUADALUPE ELVIRA GUERRERO RODRÍGUEZ']);
+
+        $this->post('/login', ['email' => 'guadalupe elvira guerrero rodriguez']);
+
+        $this->assertSame($client->id, Auth::guard('portal')->id());
+    }
+
+    public function test_client_can_authenticate_by_name_with_extra_and_non_breaking_spaces(): void
+    {
+        $client = Client::create(['name' => "GUADALUPE  ELVIRA\u{A0}GUERRERO RODRIGUEZ"]);
+
+        $this->post('/login', ['email' => '  Guadalupe   Elvira Guerrero  Rodriguez ']);
+
+        $this->assertSame($client->id, Auth::guard('portal')->id());
+    }
+
+    public function test_names_that_only_differ_by_spacing_or_accents_are_ambiguous(): void
+    {
+        // Con la comparación tolerante ambas fichas son "la misma": hay que
+        // entrar con RFC, correo o teléfono para no adivinar a cuál pertenece.
+        Client::create(['name' => 'CLIENTE GENERICO']);
+        Client::create(['name' => 'CLIENTE  GENÉRICO']);
+
+        $this->post('/login', ['email' => 'cliente generico']);
+
+        $this->assertTrue($this->portalGuest());
+    }
+
     public function test_dashboard_requires_authentication(): void
     {
         $this->get('/dashboard')->assertRedirect(route('login', absolute: false));

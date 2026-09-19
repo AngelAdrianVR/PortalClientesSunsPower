@@ -76,4 +76,57 @@ class StatementViewTest extends TestCase
             ->where('services.0.payments.2.payment_date', $newDate)
         );
     }
+
+    public function test_statement_breaks_down_paid_interest_principal_and_total(): void
+    {
+        $client = Client::create([
+            'name' => 'Cliente Demo',
+            'tax_id' => 'XAXX010101000',
+        ]);
+
+        $order = ServiceOrder::create([
+            'client_id' => $client->id,
+            'total_amount' => 2000,
+            'status' => 'Aceptado',
+            'service_number' => 'S-002',
+        ]);
+
+        // Un solo pago liquida las dos cuotas: 2000 de capital + 200 de interés.
+        $payment = Payment::create([
+            'client_id' => $client->id,
+            'service_order_id' => $order->id,
+            'amount' => 2200,
+            'interest_amount' => 200,
+            'payment_date' => now()->subDays(40)->format('Y-m-d'),
+            'method' => 'Transferencia',
+            'reference' => 'REF-UNICO',
+        ]);
+
+        foreach ([1, 2] as $number) {
+            PaymentInstallment::create([
+                'service_order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'installment_number' => $number,
+                'label' => 'Cuota '.$number,
+                'projected_date' => now()->subDays(40)->format('Y-m-d'),
+                'amount' => 1000,
+                'status' => 'paid',
+            ]);
+        }
+
+        $response = $this->actingAs($client, 'portal')->get(route('statement.view'));
+
+        $response->assertOk();
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('EstadoCuenta')
+            // El interés del pago se reparte proporcionalmente entre las cuotas.
+            ->where('services.0.installments.0.paid_interest', 100)
+            ->where('services.0.installments.0.paid_total', 1100)
+            ->where('services.0.installments.1.paid_interest', 100)
+            ->where('services.0.installments.1.paid_total', 1100)
+            // Capital pagado del pago = total − interés.
+            ->where('services.0.payments.0.principal', 2000)
+            ->where('services.0.payments.0.amount', 2200)
+        );
+    }
 }
