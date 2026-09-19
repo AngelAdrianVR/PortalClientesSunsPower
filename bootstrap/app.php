@@ -3,6 +3,8 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -20,5 +22,17 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        /*
+         * PHP corta la petición ANTES de entrar a Laravel cuando el archivo
+         * supera `post_max_size` (el middleware ValidatePostSize responde 413).
+         * En el panel de tutoriales se vuelve a él con `?error=size` para que la
+         * pantalla explique el motivo, en lugar de mostrar un error genérico.
+         */
+        $exceptions->render(function (PostTooLargeException $e, Request $request) {
+            if ($request->is('gestion-tutoriales*')) {
+                return redirect('/gestion-tutoriales?error=size');
+            }
+
+            return null;
+        });
     })->create();

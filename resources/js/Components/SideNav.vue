@@ -43,6 +43,10 @@ function logout() {
 const activeIndex = computed(() => {
     const url = page.url || '';
 
+    if (url.startsWith('/tutoriales')) {
+        return '/tutoriales';
+    }
+
     if (url.startsWith('/servicios')) {
         return '/servicios';
     }
@@ -90,6 +94,10 @@ function goDashboard() {
                 <el-icon><Grid /></el-icon>
                 <template #title>Servicios</template>
             </el-menu-item>
+            <el-menu-item index="/tutoriales">
+                <el-icon><VideoPlay /></el-icon>
+                <template #title>Tutoriales</template>
+            </el-menu-item>
         </el-menu>
 
         <div class="portal-aside-footer">
@@ -123,6 +131,10 @@ function goDashboard() {
                 <el-menu-item index="/servicios">
                     <el-icon><Grid /></el-icon>
                     <template #title>Servicios</template>
+                </el-menu-item>
+                <el-menu-item index="/tutoriales">
+                    <el-icon><VideoPlay /></el-icon>
+                    <template #title>Tutoriales</template>
                 </el-menu-item>
             </el-menu>
 

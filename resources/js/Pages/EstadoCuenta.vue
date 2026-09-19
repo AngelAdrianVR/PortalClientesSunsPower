@@ -53,6 +53,14 @@ function statusOf(status) {
     return statusMeta[status] || { label: status, cls: 'is-info' };
 }
 
+/**
+ * Saldo pendiente real = capital pendiente + interés moratorio acumulado.
+ * El backend manda el capital (`balance`) y el interés por separado.
+ */
+function pendingTotal(svc) {
+    return Number(svc.balance || 0) + Number(svc.overdue_interest || 0);
+}
+
 function downloadPdf() {
     if (!selectedServices.value.length) {
         return;
@@ -188,7 +196,8 @@ function closeTab() {
                                         <th class="is-right">Monto</th>
                                         <th>Estatus</th>
                                         <th class="is-right">Interés</th>
-                                        <th class="is-right">Total a pagar</th>
+                                        <th class="is-right">Interés pagado</th>
+                                        <th class="is-right">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -200,11 +209,12 @@ function closeTab() {
                                             <td class="is-right">{{ fmtMoney(i.amount) }}</td>
                                             <td :class="statusOf(i.status).cls">{{ statusOf(i.status).label }}</td>
                                             <td class="is-right" :class="{ 'is-interest': i.interest > 0 }">{{ fmtMoney(i.interest) }}</td>
-                                            <td class="is-right">{{ fmtMoney(i.total_with_interest) }}</td>
+                                            <td class="is-right" :class="{ 'is-interest': i.paid_interest > 0 }">{{ fmtMoney(i.paid_interest) }}</td>
+                                            <td class="is-right">{{ fmtMoney(i.status === 'paid' ? i.paid_total : i.total_with_interest) }}</td>
                                         </tr>
                                     </template>
                                     <tr v-else>
-                                        <td colspan="7">Este servicio no tiene cuotas registradas (plan personalizado).</td>
+                                        <td colspan="8">Este servicio no tiene cuotas registradas (plan personalizado).</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -218,8 +228,9 @@ function closeTab() {
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
-                                        <th class="is-right">Monto</th>
-                                        <th class="is-right">Interés</th>
+                                        <th class="is-right">Capital pagado</th>
+                                        <th class="is-right">Interés pagado</th>
+                                        <th class="is-right">Total pagado</th>
                                         <th>Método</th>
                                         <th>Referencia</th>
                                     </tr>
@@ -228,14 +239,15 @@ function closeTab() {
                                     <template v-if="svc.payments.length">
                                         <tr v-for="(p, idx) in svc.payments" :key="idx">
                                             <td>{{ fmtDate(p.payment_date) }}</td>
+                                            <td class="is-right">{{ fmtMoney(p.principal) }}</td>
+                                            <td class="is-right" :class="{ 'is-interest': p.interest_amount > 0 }">{{ fmtMoney(p.interest_amount) }}</td>
                                             <td class="is-right">{{ fmtMoney(p.amount) }}</td>
-                                            <td class="is-right">{{ fmtMoney(p.interest_amount) }}</td>
                                             <td>{{ p.method || '—' }}</td>
                                             <td>{{ p.reference || '—' }}</td>
                                         </tr>
                                     </template>
                                     <tr v-else>
-                                        <td colspan="5">Aún no hay pagos registrados.</td>
+                                        <td colspan="6">Aún no hay pagos registrados.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -256,9 +268,13 @@ function closeTab() {
                                 <td>Interés moratorio acumulado:</td>
                                 <td class="is-right">{{ fmtMoney(svc.overdue_interest) }}</td>
                             </tr>
-                            <tr class="st-grand">
-                                <td>Saldo pendiente:</td>
+                            <!-- <tr v-if="svc.overdue_interest > 0">
+                                <td>Saldo de capital pendiente:</td>
                                 <td class="is-right">{{ fmtMoney(svc.balance) }}</td>
+                            </tr> -->
+                            <tr class="st-grand">
+                                <td>{{ svc.overdue_interest > 0 ? 'Total pendiente a pagar (capital + interés):' : 'Saldo pendiente:' }}</td>
+                                <td class="is-right">{{ fmtMoney(pendingTotal(svc)) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -477,7 +493,7 @@ function closeTab() {
 }
 
 .st-block .st-table-scroll .st-table {
-    min-width: 700px;
+    min-width: 880px;
 }
 
 .st-table .is-right {
